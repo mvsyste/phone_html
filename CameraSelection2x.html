@@ -139,12 +139,26 @@
             }
         };
 
-        try {
-            currentStream = await navigator.mediaDevices.getUserMedia(constraints);
-            videoElement.srcObject = currentStream;
+       try 
+       {
+          currentStream = await navigator.mediaDevices.getUserMedia(constraints);
+          videoElement.srcObject = currentStream;
+        
+          // Apply zoom capability if supported by the hardware
+          const videoTrack = currentStream.getVideoTracks()[0];
+          const capabilities = videoTrack.getCapabilities();
+        
+          // Ensure zoom is supported before applying it
+          if ('zoom' in capabilities) {
+            videoTrack.applyConstraints({
+              advanced: [{ zoom: 2 }]
+            });
+          }
+        
         } catch (err) {
-            errorDiv.textContent = "Could not stream from this lens: " + err.message;
+          errorDiv.textContent = 'Could not stream from this lens: ' + err.message;
         }
+
     }
 </script>
 
