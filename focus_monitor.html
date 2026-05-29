@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Camera Focus Monitor</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            max-width: 600px;
+            margin: 20px auto;
+            padding: 0 20px;
+        }
+        .stats-box {
+            background: #f0f0f0;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            font-family: monospace;
+        }
+        video {
+            width: 100%;
+            border-radius: 8px;
+            background: #000;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            margin-bottom: 15px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Camera Focus Monitor</h1>
+    <button id="startBtn">Start Camera</button>
+
+    <!-- Stats Box above the video stream -->
+    <div class="stats-box">
+        <h3>Focus Distance Properties</h3>
+        <div><strong>Current:</strong> <span id="currVal">Not started</span></div>
+        <div><strong>Min:</strong> <span id="minVal">-</span></div>
+        <div><strong>Max:</strong> <span id="maxVal">-</span></div>
+        <div><strong>Step:</strong> <span id="stepVal">-</span></div>
+    </div>
+
+    <video id="videoPreview" autoplay playsinline muted></video>
+
+    <script>
+        const startBtn = document.getElementById('startBtn');
+        const video = document.getElementById('videoPreview');
+        
+        const currVal = document.getElementById('currVal');
+        const minVal = document.getElementById('minVal');
+        const maxVal = document.getElementById('maxVal');
+        const stepVal = document.getElementById('stepVal');
+
+        startBtn.addEventListener('click', async () => {
+            try {
+                // Request the rear camera with advanced focus capabilities
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        facingMode: { ideal: "environment" },
+                        advanced: [{ focusMode: "manual" }]
+                    }
+                });
+
+                video.srcObject = stream;
+                startBtn.disabled = true;
+
+                // Get the video track to inspect its capabilities
+                const track = stream.getVideoTracks()[0];
+                
+                // Allow a brief moment for the hardware stream to initialize 
+                setTimeout(() => {
+                    updateFocusStats(track);
+                }, 1000);
+
+            } catch (err) {
+                alert("Error accessing camera: " + err.message);
+            }
+        });
+
+        function updateFocusStats(track) {
+            const capabilities = track.getCapabilities();
+            const settings = track.getSettings();
+
+            // Check if focusDistance is supported by the browser/hardware
+            if (capabilities.focusDistance) {
+                minVal.textContent = capabilities.focusDistance.min;
+                maxVal.textContent = capabilities.focusDistance.max;
+                stepVal.textContent = capabilities.focusDistance.step;
+                currVal.textContent = settings.focusDistance || "Auto / Unset";
+            } else {
+                currVal.textContent = "Unsupported on this device/browser";
+                minVal.textContent = "N/A";
+                maxVal.textContent = "N/A";
+                stepVal.textContent = "N/A";
+            }
+        }
+    </script>
+</body>
+</html>
