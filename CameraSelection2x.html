@@ -65,7 +65,7 @@
     
     <!-- Step 3: Stream Viewer -->
     <video id="preview" autoplay playsinline muted></video>
-    
+    <div id="dimensionsDiv"></div>
     <div id="errorMessage" class="error"></div>
 </div>
 
@@ -143,7 +143,12 @@
        {
           currentStream = await navigator.mediaDevices.getUserMedia(constraints);
           videoElement.srcObject = currentStream;
-        
+      
+          // Wait for the video metadata to load to get accurate dimensions
+          videoElement.addEventListener('loadedmetadata', () => {
+              const dimensionsDiv = document.getElementById('dimensionsDiv'); // Your output element
+              dimensionsDiv.textContent = `Image Size: ${videoElement.videoWidth} x ${videoElement.videoHeight}`;
+          });
           // Apply zoom capability if supported by the hardware
           const videoTrack = currentStream.getVideoTracks()[0];
           const capabilities = videoTrack.getCapabilities();
