@@ -134,8 +134,8 @@
             video: {
                 deviceId: { exact: deviceId },
                 // Optional: Force lower target resolution for a 2MP macro sensor profile
-                //width: { ideal: 1600 },
-                //height: { ideal: 1200 }
+                width: { ideal: 4096 }, 
+               height: { ideal: 2160 } 
             }
         };
 
@@ -143,12 +143,20 @@
        {
           currentStream = await navigator.mediaDevices.getUserMedia(constraints);
           videoElement.srcObject = currentStream;
-      
-          // Wait for the video metadata to load to get accurate dimensions
+
+          // 2. Wait for metadata to load accurately
           videoElement.addEventListener('loadedmetadata', () => {
-              const dimensionsDiv = document.getElementById('dimensionsDiv'); // Your output element
-              dimensionsDiv.textContent = `Image Size: ${videoElement.videoWidth} x ${videoElement.videoHeight}`;
+            const dimensionsDiv = document.getElementById('dimensionsDiv');
+        
+            // Use getSettings() to reliably get the actual width and height of the hardware track
+            const [track] = currentStream.getVideoTracks();
+            const settings = track.getSettings();
+        
+            dimensionsDiv.textContent = `Max Image Size: ${settings.width} x ${settings.height}`;
+
+            // dimensionsDiv.textContent = `Image Size: ${videoElement.videoWidth} x ${videoElement.videoHeight}`;
           });
+                     
           // Apply zoom capability if supported by the hardware
           const videoTrack = currentStream.getVideoTracks()[0];
           const capabilities = videoTrack.getCapabilities();
