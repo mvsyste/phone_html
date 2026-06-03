@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Camera Exposure Control</title>
+    <style>
+        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; padding: 1rem; }
+        video { width: 100%; max-width: 500px; border: 1px solid #ccc; border-radius: 8px; }
+        .controls { margin-top: 1rem; display: flex; flex-direction: column; align-items: center; width: 100%; max-width: 500px; }
+        .slider-group { display: flex; align-items: center; justify-content: space-between; width: 100%; margin-top: 0.5rem; }
+        input[type=range] { flex-grow: 1; margin: 0 1rem; }
+        #unsupported-msg { color: red; display: none; }
+    </style>
+</head>
+<body>
+
+    <video id="stream" autoplay playsinline></video>
+
+    <div class="controls">
+        <p id="unsupported-msg">Exposure compensation is not supported by this camera.</p>
+        
+        <div class="slider-group">
+            <label for="exposure">Exposure: </label>
+            <input type="range" id="exposure" min="-3" max="3" step="0.1" value="0" disabled>
+            <span id="exposure-value">0.0</span>
+        </div>
+    </div>
+
+    <script>
+        const videoElement = document.getElementById('stream');
+        const exposureSlider = document.getElementById('exposure');
+        const exposureValue = document.getElementById('exposure-value');
+        const unsupportedMsg = document.getElementById('unsupported-msg');
+
+        let videoTrack = null;
+
+        async function startCamera() {
+            try {
+                // Request the rear/environment camera
+                const constraints = {
+                    video: { facingMode: { exact: 'environment' } }
+                };
+
+                const stream = await navigator.mediaDevices.getUserMedia(constraints);
+                videoElement.srcObject = stream;
+                
+                // Get the video track to check capabilities
+                videoTrack = stream.getVideoTracks()[0];
+                const capabilities = videoTrack.getCapabilities();
+
+                // Check if exposure compensation is supported
+                if (capabilities.exposureCompensation) {
+                    const min = capabilities.exposureCompensation.min;
+                    const max = capabilities.exposureCompensation.max;
+                    const step = capabilities.exposureCompensation.step || 0.1;
+                    const current = videoTrack.getSettings().exposureCompensation || 0;
+
+                    // Configure and enable slider
+                    exposureSlider.min = min;
+                    exposureSlider.max = max;
+                    exposureSlider.step = step;
+                    exposureSlider.value = current;
+                    
+                    exposureValue.textContent = current.toFixed(1);
+                    exposureSlider.disabled = false;
+
+                } else {
+                    unsupportedMsg.style.display = 'block';
+                }
+
+            } catch (err) {
+                console.error("Error accessing camera: ", err);
+                alert("Please ensure you are on a mobile device with a rear camera and have granted permissions.");
+            }
+        }
+
+        // Listen for slider changes
+        exposureSlider.addEventListener('input', async (e) => {
+            const val = parseFloat(e.target.value);
+            exposureValue.textContent = val.toFixed(1);
+
+            if (videoTrack) {
+                try {
+                    await videoTrack.applyConstraints({
+                        advanced: [{ exposureCompensation: val }]
+                    });
+                } catch (err) {
+                    console.error("Error applying exposure constraint: ", err);
+                }
+            }
+        });
+
+        // Initialize camera on load
+        startCamera();
+    </script>
+</body>
+</html>
