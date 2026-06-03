@@ -155,7 +155,7 @@
             // 6. Draw the sharpness text below the rectangle
             ctx.fillStyle = '#00FF00';
             ctx.font = '72px Arial';
-            ctx.fillText(`Sharpness: ${sharpness.toFixed(2)}`, xCenter, yCenter + rectSize + 35);
+            ctx.fillText(`Sharpness: ${sharpness.toFixed(2)}`, xCenter - 30, yCenter + rectSize + 40);
         
             // Loop the frame processing
             animationFrameId = requestAnimationFrame(() => processFrame(video));
