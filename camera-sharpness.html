@@ -120,10 +120,10 @@
             const yCenter = (canvas.height / 2) - (rectSize / 2);
 
             // 3. Extract the image data of the center rectangle
-            const imgData = ctx.getImageData(xCenter, yCenter, rectSize, rectSize);
+            //const imgData = ctx.getImageData(xCenter, yCenter, rectSize, rectSize);
 
             // 4. Compute sharpness using Sobel Gradient Method
-            const sharpness = computeSharpness(imgData);
+            //const sharpness = computeSharpness(imgData);
 
             // 5. Draw the rectangle on top of the video
             ctx.strokeStyle = '#00FF00'; // Green
@@ -131,9 +131,9 @@
             ctx.strokeRect(xCenter, yCenter, rectSize, rectSize);
 
             // 6. Draw the sharpness text below the rectangle
-            ctx.fillStyle = '#00FF00';
-            ctx.font = '24px Arial';
-            ctx.fillText(`Sharpness: ${sharpness.toFixed(2)}`, xCenter, yCenter + rectSize + 35);
+            //ctx.fillStyle = '#00FF00';
+            //ctx.font = '24px Arial';
+            //ctx.fillText(`Sharpness: ${sharpness.toFixed(2)}`, xCenter, yCenter + rectSize + 35);
 
             // Loop the frame processing
             animationFrameId = requestAnimationFrame(() => processFrame(video));
