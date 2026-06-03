@@ -43,165 +43,176 @@
         <canvas id="canvas"></canvas>
     </div>
 
-    <script>const cameraSelect = document.getElementById('cameraSelect');
-const startBtn = document.getElementById('startBtn');
-const canvas = document.getElementById('canvas');
-const ctx = canvas.getContext('2d');
-
-let currentStream = null;
-let animationFrameId = null;
-
-// Populates the dropdown with available cameras
-async function getCameras() {
-    try {
-        // Request temporary permission to get camera names immediately
-        await navigator.mediaDevices.getUserMedia({ video: true });
+    <script>
+        const cameraSelect = document.getElementById('cameraSelect');
+        const startBtn = document.getElementById('startBtn');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
         
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        const videoDevices = devices.filter(device => device.kind === 'videoinput');
-        cameraSelect.innerHTML = '<option value="">-- Select a camera --</option>';
-        videoDevices.forEach(device => {
-            const option = document.createElement('option');
-            option.value = device.deviceId;
-            option.text = device.label || `Camera ${cameraSelect.length}`;
-            cameraSelect.appendChild(option);
-        });
-    } catch (err) {
-        console.error("Error enumerating devices:", err);
-    }
-}
-
-// Starts the selected camera at maximum resolution
-async function startCamera() {
-    if (currentStream) {
-        currentStream.getTracks().forEach(track => track.stop());
-    }
-
-    const deviceId = cameraSelect.value;
-    if (!deviceId) return alert("Please select a camera first.");
-
-    const constraints = {
-        video: {
-            deviceId: { exact: deviceId },
-            width: { ideal: 4096 }, // Requests highest resolution possible
-            height: { ideal: 2160 }
-        }
-    };
-
-    try {
-        currentStream = await navigator.mediaDevices.getUserMedia(constraints);
+        let currentStream = null;
+        let animationFrameId = null;
         
-        // FIX 1: Explicitly configure video properties for cross-browser autoplay
-        const video = document.createElement('video');
-        video.setAttribute('playsinline', ''); 
-        video.muted = true;                   
-        video.autoplay = true;                
-        video.srcObject = currentStream;
-
-        // FIX 2: Wait until the video is actively playing and streaming frames
-        video.onplaying = () => {
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            
-            if (animationFrameId) cancelAnimationFrame(animationFrameId);
-            processFrame(video);
-        };
-        
-        // Trigger video load
-        await video.play();
-
-    } catch (err) {
-        console.error("Error accessing camera:", err);
-        alert("Failed to open camera. Make sure you granted permissions.");
-    }
-}
-
-// Processes each frame: draws video, box, and computes sharpness
-function processFrame(video) {
-    if (!currentStream || video.paused || video.ended) return;
-
-    // 1. Draw current video frame to canvas
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-    // 2. Define rectangle dimensions (200x200 at center)
-    const rectSize = 200;
-    const xCenter = (canvas.width / 2) - (rectSize / 2);
-    const yCenter = (canvas.height / 2) - (rectSize / 2);
-
-    // 3. Extract the image data of the center rectangle
-    const imgData = ctx.getImageData(xCenter, yCenter, rectSize, rectSize);
-
-    // 4. Compute sharpness using Sobel Gradient Method
-    const sharpness = computeSharpness(imgData);
-
-    // 5. Draw the rectangle on top of the video
-    ctx.strokeStyle = '#00FF00'; // Green
-    ctx.lineWidth = 4;
-    ctx.strokeRect(xCenter, yCenter, rectSize, rectSize);
-
-    // 6. Draw the sharpness text below the rectangle
-    ctx.fillStyle = '#00FF00';
-    ctx.font = '24px Arial';
-    ctx.fillText(`Sharpness: ${sharpness.toFixed(2)}`, xCenter, yCenter + rectSize + 35);
-
-    // Loop the frame processing
-    animationFrameId = requestAnimationFrame(() => processFrame(video));
-}
-
-// Sobel-based image gradient sharpness estimation
-function computeSharpness(imgData) {
-    const data = imgData.data;
-    const width = imgData.width;
-    const height = imgData.height;
-
-    // Sobel kernels for X and Y gradients
-    const Gx = [
-        [-1, 0, 1],
-        [-2, 0, 2],
-        [-1, 0, 1]
-    ];
-    // FIX 3: Corrected the broken matrix syntax layout here
-    const Gy = [
-        [-1, -2, -1],
-        [ 0,  0,  0],
-        [ 1,  2,  1]
-    ];
-
-    let sumGradient = 0;
-
-    for (let y = 1; y < height - 1; y++) {
-        for (let x = 1; x < width - 1; x++) {
-            let pixelX = 0;
-            let pixelY = 0;
-
-            for (let a = 0; a < 3; a++) {
-                for (let b = 0; b < 3; b++) {
-                    const pixelIndex = ((y + a - 1) * width + (x + b - 1)) * 4;
-                    const r = data[pixelIndex];
-                    const g = data[pixelIndex + 1];
-                    const b_color = data[pixelIndex + 2];
-                    const gray = r * 0.3 + g * 0.59 + b_color * 0.11;
-
-                    pixelX += gray * Gx[a][b];
-                    pixelY += gray * Gy[a][b];
+        // Populates the dropdown with available cameras safely
+        async function getCameras() {
+            let initialStream = null;
+            try {
+                // 1. Request temporary access to uncover real device labels
+                initialStream = await navigator.mediaDevices.getUserMedia({ video: true });
+                
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const videoDevices = devices.filter(device => device.kind === 'videoinput');
+                
+                cameraSelect.innerHTML = '<option value="">-- Select a camera --</option>';
+                videoDevices.forEach(device => {
+                    const option = document.createElement('option');
+                    option.value = device.deviceId;
+                    option.text = device.label || `Camera ${cameraSelect.length + 1}`;
+                    cameraSelect.appendChild(option);
+                });
+            } catch (err) {
+                console.error("Error enumerating devices:", err);
+                alert("Camera access denied or blocked. Please ensure you are serving this page via http://localhost or https://");
+            } finally {
+                // FIX: Always explicitly close the initial permission stream to free up the hardware
+                if (initialStream) {
+                    initialStream.getTracks().forEach(track => track.stop());
                 }
             }
-
-            const magnitude = Math.sqrt(pixelX * pixelX + pixelY * pixelY);
-            sumGradient += magnitude;
         }
-    }
-
-    const totalPixels = (width - 2) * (height - 2);
-    return sumGradient / totalPixels;
-}
-
-// Event listeners
-startBtn.addEventListener('click', startCamera);
-navigator.mediaDevices.addEventListener('devicechange', getCameras);
-
-// Initialize camera list on page load
-getCameras();
+        
+        // Starts the selected camera at maximum resolution
+        async function startCamera() {
+            // Stop any active canvas rendering loop
+            if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+                animationFrameId = null;
+            }
+        
+            // Explicitly shut down existing streams to free up system hardware
+            if (currentStream) {
+                currentStream.getTracks().forEach(track => track.stop());
+                currentStream = null;
+            }
+        
+            const deviceId = cameraSelect.value;
+            if (!deviceId) return alert("Please select a camera first.");
+        
+            // Constraint configuration optimized to hunt for max device resolution
+            const constraints = {
+                video: {
+                    deviceId: { exact: deviceId },
+                    width: { ideal: 3840 }, 
+                    height: { ideal: 2160 }
+                }
+            };
+        
+            try {
+                currentStream = await navigator.mediaDevices.getUserMedia(constraints);
+                
+                const video = document.createElement('video');
+                video.setAttribute('playsinline', ''); 
+                video.muted = true;                   
+                video.autoplay = true;                
+                video.srcObject = currentStream;
+        
+                video.onplaying = () => {
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    processFrame(video);
+                };
+                
+                await video.play();
+        
+            } catch (err) {
+                console.error("Error accessing camera:", err);
+                alert("Failed to open camera. Ensure the camera isn't actively being used by another application or tab.");
+            }
+        }
+        
+        // Processes each frame: draws video, box, and computes sharpness
+        function processFrame(video) {
+            if (!currentStream || video.paused || video.ended) return;
+        
+            // 1. Draw current video frame to canvas
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        
+            // 2. Define rectangle dimensions (200x200 at center)
+            const rectSize = 200;
+            const xCenter = (canvas.width / 2) - (rectSize / 2);
+            const yCenter = (canvas.height / 2) - (rectSize / 2);
+        
+            // 3. Extract the image data of the center rectangle
+            const imgData = ctx.getImageData(xCenter, yCenter, rectSize, rectSize);
+        
+            // 4. Compute sharpness using Sobel Gradient Method
+            const sharpness = computeSharpness(imgData);
+        
+            // 5. Draw the rectangle on top of the video
+            ctx.strokeStyle = '#00FF00'; 
+            ctx.lineWidth = 4;
+            ctx.strokeRect(xCenter, yCenter, rectSize, rectSize);
+        
+            // 6. Draw the sharpness text below the rectangle
+            ctx.fillStyle = '#00FF00';
+            ctx.font = '24px Arial';
+            ctx.fillText(`Sharpness: ${sharpness.toFixed(2)}`, xCenter, yCenter + rectSize + 35);
+        
+            // Loop the frame processing
+            animationFrameId = requestAnimationFrame(() => processFrame(video));
+        }
+        
+        // Sobel-based image gradient sharpness estimation
+        function computeSharpness(imgData) {
+            const data = imgData.data;
+            const width = imgData.width;
+            const height = imgData.height;
+        
+            const Gx = [
+                [-1, 0, 1],
+                [-2, 0, 2],
+                [-1, 0, 1]
+            ];
+            const Gy = [
+                [-1, -2, -1],
+                [ 0,  0,  0],
+                [ 1,  2,  1]
+            ];
+        
+            let sumGradient = 0;
+        
+            for (let y = 1; y < height - 1; y++) {
+                for (let x = 1; x < width - 1; x++) {
+                    let pixelX = 0;
+                    let pixelY = 0;
+        
+                    for (let a = 0; a < 3; a++) {
+                        for (let b = 0; b < 3; b++) {
+                            const pixelIndex = ((y + a - 1) * width + (x + b - 1)) * 4;
+                            const r = data[pixelIndex];
+                            const g = data[pixelIndex + 1];
+                            const b_color = data[pixelIndex + 2];
+                            const gray = r * 0.299 + g * 0.587 + b_color * 0.114;
+        
+                            pixelX += gray * Gx[a][b];
+                            pixelY += gray * Gy[a][b];
+                        }
+                    }
+        
+                    const magnitude = Math.sqrt(pixelX * pixelX + pixelY * pixelY);
+                    sumGradient += magnitude;
+                }
+            }
+        
+            const totalPixels = (width - 2) * (height - 2);
+            return sumGradient / totalPixels;
+        }
+        
+        // Event listeners
+        startBtn.addEventListener('click', startCamera);
+        navigator.mediaDevices.addEventListener('devicechange', getCameras);
+        
+        // Initialize camera list on page load
+        getCameras();
 
     </script>
 </body>
