@@ -1,158 +1,144 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Camera Cropper and Downloader</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            padding: 20px;
-            background-color: #f0f2f5;
-        }
-        .container {
-            position: relative;
-            margin-top: 20px;
-        }
-        /* Hidden video stream that secretly captures at high resolution */
-        #hiddenVideo {
-            display: none;
-        }
-        /* Cropped 2000x2000px display element (scaled to fit screen) */
-        #displayCanvas {
-            border: 2px solid #333;
-            background-color: #000;
-            max-width: 100%;
-            width: 800px; /* CSS scale, 2000x2000 is retained in canvas memory */
-            height: 800px;
-        }
-        button {
-            margin-top: 20px;
-            padding: 12px 24px;
-            font-size: 16px;
-            background-color: #007bff;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-        }
-        button:hover { background-color: #0056b3; }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Camera Cropper & Zoom</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      background: #f0f2f5;
+      margin: 0;
+      padding: 20px;
+    }
+    
+    #stream-container {
+      position: relative;
+      width: 500px;
+      height: 500px;
+      margin: 0 auto;
+      overflow: hidden;
+      border: 3px solid #333;
+      border-radius: 8px;
+    }
+
+    /* Zooms & crops to show only a 2000x2000 area in a 500x500 box */
+    #video {
+      position: absolute;
+      width: 2000px;
+      height: 2000px;
+      top: -750px;
+      left: -750px;
+    }
+
+    /* Draws a 1000x1000 area at the center of the viewport */
+    #overlay-rect {
+      position: absolute;
+      top: 125px; /* (500 - 250) / 2 */
+      left: 125px;
+      width: 250px; /* Scaled down 1000x1000 */
+      height: 250px;
+      border: 3px dashed #ff0055;
+      box-sizing: border-box;
+      pointer-events: none;
+    }
+
+    button {
+      margin-top: 20px;
+      padding: 12px 24px;
+      font-size: 16px;
+      background-color: #007bff;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    
+    button:hover {
+      background-color: #0056b3;
+    }
+  </style>
 </head>
 <body>
 
-    <h2>Camera Capture at 2x</h2>
-    <button id="startBtn">Start Camera</button>
+  <div id="stream-container">
+    <video id="video" autoplay playsinline></video>
+    <div id="overlay-rect"></div>
+  </div>
 
-    <div class="container">
-        <!-- Hidden High-Res Video Source -->
-        <video id="hiddenVideo" autoplay playsinline></video>
-        <!-- The 2000x2000px cropped visualization on-screen -->
-        <canvas id="displayCanvas" width="2000" height="2000"></canvas>
-    </div>
+  <br>
+  <button id="capture-btn">Save 1000x1000 Area</button>
 
-    <button id="saveBtn">Save 1000x1000 Center</button>
+  <script>
+    const video = document.getElementById('video');
+    const captureBtn = document.getElementById('capture-btn');
 
-    <script>
-        const startBtn = document.getElementById('startBtn');
-        const saveBtn = document.getElementById('saveBtn');
-        const hiddenVideo = document.getElementById('hiddenVideo');
-        const displayCanvas = document.getElementById('displayCanvas');
-        const displayCtx = displayCanvas.getContext('2d');
-
-        let streamTrack = null;
-        let animationFrameId = null;
-
-        startBtn.addEventListener('click', async () => {
-            try {
-                // Constraints: Request high resolution and back camera
-                const constraints = {
-                    video: {
-                        facingMode: { exact: "environment" }, // Request back camera
-                        width: { ideal: 3840 },
-                        height: { ideal: 3840 }
-                    }
-                };
-
-                const stream = await navigator.mediaDevices.getUserMedia(constraints);
-                hiddenVideo.srcObject = stream;
-                
-                // Get the video track to set Zoom
-                streamTrack = stream.getVideoTracks()[0];
-                
-                hiddenVideo.onloadedmetadata = () => {
-                    hiddenVideo.play();
-                    
-                    // Attempt to apply 2x zoom
-                    const capabilities = streamTrack.getCapabilities();
-                    if (capabilities.zoom) {
-                        streamTrack.applyConstraints({
-                            advanced: [{ zoom: 2.0 }]
-                        }).catch(err => console.warn("Zoom not supported:", err));
-                    }
-                    
-                    // Start rendering the 2000x2000 cropped stream
-                    requestAnimationFrame(renderStream);
-                };
-            } catch (err) {
-                alert("Error accessing the back camera. Make sure you are on HTTPS. Details: " + err.message);
-            }
+    // Start the camera with specific constraints
+    async function startCamera() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: {
+            facingMode: { exact: "environment" }, // Selects the back camera
+            width: { ideal: 4000 },                 // Ask for highest resolution
+            height: { ideal: 4000 }
+          }
         });
 
-        function renderStream() {
-            if (hiddenVideo.readyState >= 2) {
-                const sourceWidth = hiddenVideo.videoWidth;
-                const sourceHeight = hiddenVideo.videoHeight;
+        video.srcObject = stream;
+        
+        // Wait for video metadata to load to access tracks
+        video.onloadedmetadata = () => {
+          const track = stream.getVideoTracks()[0];
+          
+          // Apply 2x zoom
+          if (track.getCapabilities && track.getCapabilities().zoom) {
+            const minZoom = track.getCapabilities().zoom.min;
+            const maxZoom = track.getCapabilities().zoom.max;
+            const targetZoom = Math.min(minZoom * 2, maxZoom); // 2x or capped at max
+            
+            track.applyConstraints({
+              advanced: [{ zoom: targetZoom }]
+            }).catch(err => console.error("Zoom failed:", err));
+          }
+        };
 
-                // Center coordinates in the actual camera sensor
-                const srcCropX = (sourceWidth - 2000) / 2;
-                const srcCropY = (sourceHeight - 2000) / 2;
+      } catch (err) {
+        console.error("Error accessing camera. Please ensure you are on HTTPS and granted permission.", err);
+        alert("Camera not found or permission denied. Note: Desktop emulators or local files sometimes block exact rear-facing mode. Try on mobile.");
+      }
+    }
 
-                // 1. Draw 2000x2000 center from the hidden video into our display canvas
-                displayCtx.drawImage(
-                    hiddenVideo,
-                    srcCropX, srcCropY, 2000, 2000,
-                    0, 0, 2000, 2000
-                );
+    // Capture the 1000x1000 area and download as PNG
+    captureBtn.addEventListener('click', () => {
+      const canvas = document.createElement('canvas');
+      
+      // Target area: 1000x1000
+      canvas.width = 1000;
+      canvas.height = 1000;
+      const ctx = canvas.getContext('2d');
 
-                // 2. Draw a 1000x1000 red rectangle in the center of the display canvas
-                // Center is (1000, 1000) for a 2000x2000 canvas
-                displayCtx.strokeStyle = 'red';
-                displayCtx.lineWidth = 6;
-                displayCtx.strokeRect(500, 500, 1000, 1000);
-            }
-            animationFrameId = requestAnimationFrame(renderStream);
-        }
+      // The Video element is 2000x2000 px, offset in a 500x500 viewport
+      // The 1000x1000 central rectangle on the video corresponds exactly to this area:
+      ctx.drawImage(
+        video,
+        500, 500,               // Source X, Y (starts in the center of the 2000px video)
+        1000, 1000,             // Source width, height
+        0, 0,                   // Destination X, Y
+        1000, 1000              // Destination width, height
+      );
 
-        saveBtn.addEventListener('click', () => {
-            if (!hiddenVideo.srcObject) {
-                alert("Please start the camera first.");
-                return;
-            }
+      // Convert canvas to PNG and trigger download
+      const dataUrl = canvas.toDataURL('image/png');
+      const link = document.createElement('a');
+      link.href = dataUrl;
+      link.download = 'cropped-capture.png';
+      link.click();
+    });
 
-            // Create a temporary 1000x1000 canvas
-            const tempCanvas = document.createElement('canvas');
-            tempCanvas.width = 1000;
-            tempCanvas.height = 1000;
-            const tempCtx = tempCanvas.getContext('2d');
-
-            // Copy only the 1000x1000 center of the displayCanvas
-            tempCtx.drawImage(
-                displayCanvas,
-                500, 500, 1000, 1000,
-                0, 0, 1000, 1000
-            );
-
-            // Trigger local download
-            const dataURL = tempCanvas.toDataURL('image/png');
-            const link = document.createElement('a');
-            link.download = 'cropped_center_1000x1000.png';
-            link.href = dataURL;
-            link.click();
-        });
-    </script>
+    // Initialize
+    startCamera();
+  </script>
 </body>
 </html>
