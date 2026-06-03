@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Camera Cropper and Downloader</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            background-color: #f0f2f5;
+        }
+        .container {
+            position: relative;
+            margin-top: 20px;
+        }
+        /* Hidden video stream that secretly captures at high resolution */
+        #hiddenVideo {
+            display: none;
+        }
+        /* Cropped 2000x2000px display element (scaled to fit screen) */
+        #displayCanvas {
+            border: 2px solid #333;
+            background-color: #000;
+            max-width: 100%;
+            width: 800px; /* CSS scale, 2000x2000 is retained in canvas memory */
+            height: 800px;
+        }
+        button {
+            margin-top: 20px;
+            padding: 12px 24px;
+            font-size: 16px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        button:hover { background-color: #0056b3; }
+    </style>
+</head>
+<body>
+
+    <h2>Camera Capture at 2x</h2>
+    <button id="startBtn">Start Camera</button>
+
+    <div class="container">
+        <!-- Hidden High-Res Video Source -->
+        <video id="hiddenVideo" autoplay playsinline></video>
+        <!-- The 2000x2000px cropped visualization on-screen -->
+        <canvas id="displayCanvas" width="2000" height="2000"></canvas>
+    </div>
+
+    <button id="saveBtn">Save 1000x1000 Center</button>
+
+    <script>
+        const startBtn = document.getElementById('startBtn');
+        const saveBtn = document.getElementById('saveBtn');
+        const hiddenVideo = document.getElementById('hiddenVideo');
+        const displayCanvas = document.getElementById('displayCanvas');
+        const displayCtx = displayCanvas.getContext('2d');
+
+        let streamTrack = null;
+        let animationFrameId = null;
+
+        startBtn.addEventListener('click', async () => {
+            try {
+                // Constraints: Request high resolution and back camera
+                const constraints = {
+                    video: {
+                        facingMode: { exact: "environment" }, // Request back camera
+                        width: { ideal: 3840 },
+                        height: { ideal: 3840 }
+                    }
+                };
+
+                const stream = await navigator.mediaDevices.getUserMedia(constraints);
+                hiddenVideo.srcObject = stream;
+                
+                // Get the video track to set Zoom
+                streamTrack = stream.getVideoTracks()[0];
+                
+                hiddenVideo.onloadedmetadata = () => {
+                    hiddenVideo.play();
+                    
+                    // Attempt to apply 2x zoom
+                    const capabilities = streamTrack.getCapabilities();
+                    if (capabilities.zoom) {
+                        streamTrack.applyConstraints({
+                            advanced: [{ zoom: 2.0 }]
+                        }).catch(err => console.warn("Zoom not supported:", err));
+                    }
+                    
+                    // Start rendering the 2000x2000 cropped stream
+                    requestAnimationFrame(renderStream);
+                };
+            } catch (err) {
+                alert("Error accessing the back camera. Make sure you are on HTTPS. Details: " + err.message);
+            }
+        });
+
+        function renderStream() {
+            if (hiddenVideo.readyState >= 2) {
+                const sourceWidth = hiddenVideo.videoWidth;
+                const sourceHeight = hiddenVideo.videoHeight;
+
+                // Center coordinates in the actual camera sensor
+                const srcCropX = (sourceWidth - 2000) / 2;
+                const srcCropY = (sourceHeight - 2000) / 2;
+
+                // 1. Draw 2000x2000 center from the hidden video into our display canvas
+                displayCtx.drawImage(
+                    hiddenVideo,
+                    srcCropX, srcCropY, 2000, 2000,
+                    0, 0, 2000, 2000
+                );
+
+                // 2. Draw a 1000x1000 red rectangle in the center of the display canvas
+                // Center is (1000, 1000) for a 2000x2000 canvas
+                displayCtx.strokeStyle = 'red';
+                displayCtx.lineWidth = 6;
+                displayCtx.strokeRect(500, 500, 1000, 1000);
+            }
+            animationFrameId = requestAnimationFrame(renderStream);
+        }
+
+        saveBtn.addEventListener('click', () => {
+            if (!hiddenVideo.srcObject) {
+                alert("Please start the camera first.");
+                return;
+            }
+
+            // Create a temporary 1000x1000 canvas
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = 1000;
+            tempCanvas.height = 1000;
+            const tempCtx = tempCanvas.getContext('2d');
+
+            // Copy only the 1000x1000 center of the displayCanvas
+            tempCtx.drawImage(
+                displayCanvas,
+                500, 500, 1000, 1000,
+                0, 0, 1000, 1000
+            );
+
+            // Trigger local download
+            const dataURL = tempCanvas.toDataURL('image/png');
+            const link = document.createElement('a');
+            link.download = 'cropped_center_1000x1000.png';
+            link.href = dataURL;
+            link.click();
+        });
+    </script>
+</body>
+</html>
