@@ -126,21 +126,21 @@
       const actualWidth = streamWidth ;// video.videoWidth;
       const actualHeight = streamHeight; //video.videoHeight;
       
-      // Target area: 1000x1000
-      canvas.width = 1000;
-      canvas.height = 1000;
+      // Target area: 1500x1500
+      canvas.width = 1500;
+      canvas.height = 1500;
       const ctx = canvas.getContext('2d');
 
       // The Video element is actualWidth x actualHeight px, offset in a 500x500 viewport
       // The 1000x1000 central rectangle on the video corresponds exactly to this area:
-      let sx =  (actualWidth-1000)/2;
-      let sy =  (actualHeight-1000)/2;
+      let sx =  (actualWidth-1500)/2;
+      let sy =  (actualHeight-1500)/2;
       ctx.drawImage(
         video,
         sx, sy,               // Source X, Y (starts in the center of the 2000px video)
-        1000, 1000,             // Source width, height
+        1500, 1500,             // Source width, height
         0, 0,                   // Destination X, Y
-        1000, 1000              // Destination width, height
+        1500, 1500              // Destination width, height
       );
 
       // Convert canvas to PNG and trigger download
