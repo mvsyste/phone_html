@@ -113,20 +113,24 @@
     // Capture the 1000x1000 area and download as PNG
     captureBtn.addEventListener('click', () => {
       const canvas = document.createElement('canvas');
+     
+      // Get the actual width and height of the video source
+      const actualWidth = video.videoWidth;
+      const actualHeight = video.videoHeight;
       
       // Target area: 1000x1000
-      canvas.width = 1000;
-      canvas.height = 1000;
+      canvas.width = actualWidth;
+      canvas.height = actualHeight;
       const ctx = canvas.getContext('2d');
 
       // The Video element is 2000x2000 px, offset in a 500x500 viewport
       // The 1000x1000 central rectangle on the video corresponds exactly to this area:
       ctx.drawImage(
         video,
-        500, 500,               // Source X, Y (starts in the center of the 2000px video)
-        1000, 1000,             // Source width, height
+        0, 0,               // Source X, Y (starts in the center of the 2000px video)
+        actualWidth, actualWidth,             // Source width, height
         0, 0,                   // Destination X, Y
-        1000, 1000              // Destination width, height
+        actualWidth, actualWidth              // Destination width, height
       );
 
       // Convert canvas to PNG and trigger download
