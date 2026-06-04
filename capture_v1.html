@@ -73,7 +73,10 @@
   <script>
     const video = document.getElementById('video');
     const captureBtn = document.getElementById('capture-btn');
-
+    // 1. Declare two external variables to store the size globally
+    let streamWidth = 0;
+    let streamHeight = 0;
+    
     // Start the camera with specific constraints
     async function startCamera() {
       try {
@@ -91,6 +94,11 @@
         // Wait for video metadata to load to access tracks
         video.onloadedmetadata = () => {
           const track = stream.getVideoTracks()[0];
+          
+          // Get the stream size and save it to the external variables
+          const settings = track.getSettings();
+          streamWidth = settings.width || video.videoWidth;
+          streamHeight = settings.height || video.videoHeight;
           
           // Apply 2x zoom
           if (track.getCapabilities && track.getCapabilities().zoom) {
@@ -115,22 +123,24 @@
       const canvas = document.createElement('canvas');
      
       // Get the actual width and height of the video source
-      const actualWidth = video.videoWidth;
-      const actualHeight = video.videoHeight;
+      const actualWidth = streamWidth ;// video.videoWidth;
+      const actualHeight = streamHeight; //video.videoHeight;
       
       // Target area: 1000x1000
-      canvas.width = actualWidth;
-      canvas.height = actualHeight;
+      canvas.width = 1000;
+      canvas.height = 1000;
       const ctx = canvas.getContext('2d');
 
-      // The Video element is 2000x2000 px, offset in a 500x500 viewport
+      // The Video element is actualWidth x actualHeight px, offset in a 500x500 viewport
       // The 1000x1000 central rectangle on the video corresponds exactly to this area:
+      let sx =  (actualWidth-1000)/2;
+      let sy =  (actualHeight-1000)/2;
       ctx.drawImage(
         video,
-        0, 0,               // Source X, Y (starts in the center of the 2000px video)
-        actualWidth, actualWidth,             // Source width, height
+        sx, sy,               // Source X, Y (starts in the center of the 2000px video)
+        actualWidth, actualHeight,             // Source width, height
         0, 0,                   // Destination X, Y
-        actualWidth, actualWidth              // Destination width, height
+        1000, 1000              // Destination width, height
       );
 
       // Convert canvas to PNG and trigger download
