@@ -69,8 +69,11 @@
 
   <br>
   <button id="capture-btn">Save 1000x1000 Area</button>
-
+  <br>
+  <div id="mvlog">Log:</div>
+  
   <script>
+    document.getElementById("mvlog").textContent += " starting javascript...";
     const video = document.getElementById('video');
     const captureBtn = document.getElementById('capture-btn');
     // 1. Declare two external variables to store the size globally
