@@ -56,12 +56,24 @@
       <span id="exposure-value">0</span>
     </div>
   </div>
+  <div class="stats-box">
+      <h3>Exposure Properties</h3>
+      <div><strong>Current:</strong> <span id="currVal">Not started</span></div>
+      <div><strong>Min:</strong> <span id="minVal">-</span></div>
+      <div><strong>Max:</strong> <span id="maxVal">-</span></div>
+      <div><strong>Step:</strong> <span id="stepVal">-</span></div>
+ </div>
 
   <script>
     const videoElement = document.getElementById('stream');
     const exposureSlider = document.getElementById('exposure');
     const exposureValue = document.getElementById('exposure-value');
     const unsupportedMsg = document.getElementById('unsupported-msg');
+
+    const currVal = document.getElementById('currVal');
+    const minVal = document.getElementById('minVal');
+    const maxVal = document.getElementById('maxVal');
+    const stepVal = document.getElementById('stepVal');
     
     let videoTrack = null;
 
@@ -85,6 +97,11 @@
           const max = capabilities.exposureTime.max;
           const step = capabilities.exposureTime.step || 1;
           const current = videoTrack.getSettings().exposureTime || min;
+
+          minVal.textContent = capabilities.exposureTime.min;
+          maxVal.textContent = capabilities.exposureTime.max;
+          stepVal.textContent = capabilities.exposureTime.step;
+          currVal.textContent = videoTrack.getSettings().exposureTime || "Auto / Unset";
           
           // Configure and enable slider
           exposureSlider.min = min;
@@ -106,6 +123,7 @@
     exposureSlider.addEventListener('input', async (e) => {
       const val = parseFloat(e.target.value);
       exposureValue.textContent = val;
+      currVal.textContent = val;
       
       if (videoTrack) {
         try {
