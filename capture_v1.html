@@ -120,7 +120,7 @@
             if (capabilities.exposureMode && capabilities.exposureMode.includes('manual') && capabilities.exposureTime) {
               const minExp = capabilities.exposureTime.min;
               const maxExp = capabilities.exposureTime.max;
-              const targetExp = 5000; // 5ms in microseconds
+              const targetExp = 50; // 5ms in microseconds
         
               // Ensure 5000us falls within the hardware's supported bounds
               if (targetExp >= minExp && targetExp <= maxExp) {
