@@ -61,7 +61,7 @@
   </style>
 </head>
 <body>
-
+  <h2>Save Images 2x</h2>
   <div id="stream-container">
     <video id="video" autoplay playsinline></video>
     <div id="overlay-rect"></div>
@@ -102,26 +102,44 @@
           streamWidth = settings.width || video.videoWidth;
           streamHeight = settings.height || video.videoHeight;
           
-          // Apply 2x zoom
-          if (track.getCapabilities && track.getCapabilities().zoom) {
-            const minZoom = track.getCapabilities().zoom.min;
-            const maxZoom = track.getCapabilities().zoom.max;
-            const targetZoom = Math.min(minZoom * 2, maxZoom); // 2x or capped at max
-            
+          // Initialize an object to hold our advanced constraints
+          const advancedConstraints = {};
+        
+          // Check capabilities for zoom and exposure
+          if (track.getCapabilities) {
+            const capabilities = track.getCapabilities();
+        
+            // Handle 2x zoom
+            if (capabilities.zoom) {
+              const minZoom = capabilities.zoom.min;
+              const maxZoom = capabilities.zoom.max;
+              advancedConstraints.zoom = Math.min(minZoom * 2, maxZoom); // 2x or capped at max
+            }
+        
+            // Handle 5ms exposure time (5ms = 5000 microseconds)
+            if (capabilities.exposureMode && capabilities.exposureMode.includes('manual') && capabilities.exposureTime) {
+              const minExp = capabilities.exposureTime.min;
+              const maxExp = capabilities.exposureTime.max;
+              const targetExp = 5000; // 5ms in microseconds
+        
+              // Ensure 5000us falls within the hardware's supported bounds
+              if (targetExp >= minExp && targetExp <= maxExp) {
+                advancedConstraints.exposureMode = 'manual';
+                advancedConstraints.exposureTime = targetExp;
+              }
+            }
+          }
+        
+          // Apply all constraints together if any were supported
+          if (Object.keys(advancedConstraints).length > 0) {
             track.applyConstraints({
-              advanced: [{ zoom: targetZoom }]
-            }).catch(err => console.error("Zoom failed:", err));
+              advanced: [advancedConstraints]
+            }).catch(err => console.error("Applying track constraints failed:", err));
           }
         };
-
-      } catch (err) {
-        console.error("Error accessing camera. Please ensure you are on HTTPS and granted permission.", err);
-        alert("Camera not found or permission denied. Note: Desktop emulators or local files sometimes block exact rear-facing mode. Try on mobile.");
-      }
-    }
-
-    // Capture the 1000x1000 area and download as PNG
-    captureBtn.addEventListener('click', () => {
+        
+      // Capture the 1000x1000 area and download as PNG
+      captureBtn.addEventListener('click', () => {
       const canvas = document.createElement('canvas');
      
       // Get the actual width and height of the video source
