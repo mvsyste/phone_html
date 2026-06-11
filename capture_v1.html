@@ -69,8 +69,11 @@
 
   <br>
   <button id="capture-btn">Save 1000x1000 Area</button>
-
+  <div id="myLog"></div>
+  
   <script>
+    
+    document.getElementById("myLog").textContent = "start javasciprt";
     const video = document.getElementById('video');
     const captureBtn = document.getElementById('capture-btn');
     // 1. Declare two external variables to store the size globally
@@ -82,6 +85,7 @@
     // Start the camera with specific constraints
     async function startCamera() 
     {
+      document.getElementById("myLog").textContent += "startCamera()";
       try 
       {
         const stream = await navigator.mediaDevices.getUserMedia({
@@ -97,6 +101,9 @@
         
         // Wait for video metadata to load to access tracks
         video.onloadedmetadata = () => {
+          
+          document.getElementById("myLog").textContent += "Wait for video metadata";
+          
           const track = stream.getVideoTracks()[0];
           
           // Get the stream size and save it to the external variables
