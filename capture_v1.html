@@ -62,6 +62,7 @@
 </head>
 <body>
   <h2>Save Images 2x log</h2>
+  <div id="myLog">Log:</div>
   <div id="stream-container">
     <video id="video" autoplay playsinline></video>
     <div id="overlay-rect"></div>
@@ -69,11 +70,11 @@
 
   <br>
   <button id="capture-btn">Save 1000x1000 Area</button>
-  <div id="myLog"></div>
+  
   
   <script>
     
-    document.getElementById("myLog").textContent = "start javasciprt";
+    document.getElementById("myLog").textContent += "start javasciprt";
     const video = document.getElementById('video');
     const captureBtn = document.getElementById('capture-btn');
     // 1. Declare two external variables to store the size globally
