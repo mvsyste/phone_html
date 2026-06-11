@@ -149,8 +149,9 @@
           }
         };
       } catch (err) {
-        console.error("Error accessing camera. Please ensure you are on HTTPS and granted permission.", err);
-        alert("Camera not found or permission denied. Note: Desktop emulators or local files sometimes block exact rear-facing mode. Try on mobile.");
+        document.getElementById("my-log").textContent += "Error accessing camera.";
+        //console.error("Error accessing camera. Please ensure you are on HTTPS and granted permission.", err);
+        //alert("Camera not found or permission denied. Note: Desktop emulators or local files sometimes block exact rear-facing mode. Try on mobile.");
       }
     }
         
