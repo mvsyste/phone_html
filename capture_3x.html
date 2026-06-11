@@ -61,7 +61,9 @@
   </style>
 </head>
 <body>
-
+  <h2>Save Images 2x log</h2>
+  <div id="my-log">Log:</div>
+  <br>
   <div id="stream-container">
     <video id="video" autoplay playsinline></video>
     <div id="overlay-rect"></div>
@@ -69,17 +71,25 @@
 
   <br>
   <button id="capture-btn">Save 1000x1000 Area</button>
-
-  <script>
+  
+  
+   <script>
+    
+    document.getElementById("my-log").textContent += "start javascript";
     const video = document.getElementById('video');
     const captureBtn = document.getElementById('capture-btn');
     // 1. Declare two external variables to store the size globally
     let streamWidth = 0;
     let streamHeight = 0;
+    // Initialize a global counter at the top of your script
+    let imageCounter = 1;
     
     // Start the camera with specific constraints
-    async function startCamera() {
-      try {
+    async function startCamera() 
+    {
+      document.getElementById("my-log").textContent += "startCamera()";
+      try 
+      {
         const stream = await navigator.mediaDevices.getUserMedia({
           audio: false,
           video: {
@@ -93,6 +103,9 @@
         
         // Wait for video metadata to load to access tracks
         video.onloadedmetadata = () => {
+          
+          document.getElementById("my-log").textContent += "Wait for video metadata";
+          
           const track = stream.getVideoTracks()[0];
           
           // Get the stream size and save it to the external variables
@@ -100,59 +113,86 @@
           streamWidth = settings.width || video.videoWidth;
           streamHeight = settings.height || video.videoHeight;
           
-          // Apply 2x zoom
-          if (track.getCapabilities && track.getCapabilities().zoom) {
-            const minZoom = track.getCapabilities().zoom.min;
-            const maxZoom = track.getCapabilities().zoom.max;
-            const targetZoom = Math.min(minZoom * 3, maxZoom); // 2x or capped at max
-            
+          // Initialize an object to hold our advanced constraints
+          const advancedConstraints = {};
+        
+          // Check capabilities for zoom and exposure
+          if (track.getCapabilities) {
+            const capabilities = track.getCapabilities();
+        
+            // Handle 2x zoom
+            if (capabilities.zoom) {
+              const minZoom = capabilities.zoom.min;
+              const maxZoom = capabilities.zoom.max;
+              advancedConstraints.zoom = Math.min(minZoom * 2, maxZoom); // 2x or capped at max
+            }
+        
+            // Handle 5ms exposure time (5ms = 5000 microseconds)
+            if (capabilities.exposureMode && capabilities.exposureMode.includes('manual') && capabilities.exposureTime) {
+              const minExp = capabilities.exposureTime.min;
+              const maxExp = capabilities.exposureTime.max;
+              const targetExp = 50; // 5ms in microseconds
+        
+              // Ensure 5000us falls within the hardware's supported bounds
+              if (targetExp >= minExp && targetExp <= maxExp) {
+                advancedConstraints.exposureMode = 'manual';
+                advancedConstraints.exposureTime = targetExp;
+              }
+            }
+          }
+        
+          // Apply all constraints together if any were supported
+          if (Object.keys(advancedConstraints).length > 0) {
             track.applyConstraints({
-              advanced: [{ zoom: targetZoom }]
-            }).catch(err => console.error("Zoom failed:", err));
+              advanced: [advancedConstraints]
+            }).catch(err => console.error("Applying track constraints failed:", err));
           }
         };
-
       } catch (err) {
         console.error("Error accessing camera. Please ensure you are on HTTPS and granted permission.", err);
         alert("Camera not found or permission denied. Note: Desktop emulators or local files sometimes block exact rear-facing mode. Try on mobile.");
       }
     }
-
+        
     // Capture the 1000x1000 area and download as PNG
     captureBtn.addEventListener('click', () => {
-      const canvas = document.createElement('canvas');
-     
-      // Get the actual width and height of the video source
-      const actualWidth = streamWidth ;// video.videoWidth;
-      const actualHeight = streamHeight; //video.videoHeight;
-      
-      // Target area: 1500x1500
-      canvas.width = 1500;
-      canvas.height = 1500;
-      const ctx = canvas.getContext('2d');
+        document.getElementById("my-log").textContent += "captureBtn click";
+        const canvas = document.createElement('canvas');
 
-      // The Video element is actualWidth x actualHeight px, offset in a 500x500 viewport
-      // The 1000x1000 central rectangle on the video corresponds exactly to this area:
-      let sx =  (actualWidth-1500)/2;
-      let sy =  (actualHeight-1500)/2;
-      ctx.drawImage(
-        video,
-        sx, sy,               // Source X, Y (starts in the center of the 2000px video)
-        1500, 1500,             // Source width, height
-        0, 0,                   // Destination X, Y
-        1500, 1500              // Destination width, height
-      );
+        // Get the actual width and height of the video source
+        const actualWidth = streamWidth ;// video.videoWidth;
+        const actualHeight = streamHeight; //video.videoHeight;
+    
+        // Target area: 1000x1000
+        canvas.width = 1000;
+        canvas.height = 1000;
+        const ctx = canvas.getContext('2d');
 
-      // Convert canvas to PNG and trigger download
-      const dataUrl = canvas.toDataURL('image/png');
-      const link = document.createElement('a');
-      link.href = dataUrl;
-      link.download = 'cropped-capture.png';
-      link.click();
+        // The Video element is actualWidth x actualHeight px, offset in a 500x500 viewport
+        // The 1000x1000 central rectangle on the video corresponds exactly to this area:
+        let sx =  (actualWidth-1000)/2;
+        let sy =  (actualHeight-1000)/2;
+        ctx.drawImage(
+            video,
+            sx, sy,               // Source X, Y (starts in the center of the 2000px video)
+            1000, 1000,             // Source width, height
+            0, 0,                   // Destination X, Y
+            1000, 1000              // Destination width, height
+            );
+
+        // Convert canvas to PNG and trigger download
+        const dataUrl = canvas.toDataURL('image/png');
+        const link = document.createElement('a');
+        link.href = dataUrl;
+        link.download = `cropped-capture-${imageCounter}.png`; 
+        link.click();
+
+        // Increment the counter for the next download
+        imageCounter++;
     });
 
     // Initialize
     startCamera();
-  </script>
+ </script>
 </body>
 </html>
