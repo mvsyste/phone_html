@@ -125,6 +125,7 @@
 
     // Capture the 1000x1000 area and download as PNG
     captureBtn.addEventListener('click', () => {
+      
       const canvas = document.createElement('canvas');
      
       // Get the actual width and height of the video source
@@ -154,9 +155,11 @@
       link.href = dataUrl;
       link.download = `cropped-capture-${imageCounter}.png`; 
       link.click();
-
-     // Increment the counter for the next download
-     imageCounter++;
+      document.getElementById("mvlog").textContent += `saved: cropped_capture_${imageCounter}.png`; 
+      
+      // Increment the counter for the next download
+      imageCounter++;
+      
     });
 
     // Initialize
