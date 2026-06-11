@@ -69,7 +69,7 @@
       try {
         // Request the rear/environment camera
         const constraints = { 
-          video: { facingMode: { exact: 'environment' } } 
+          video: { facingMode: { ideal: "environment"  } } 
         };
         
         const stream = await navigator.mediaDevices.getUserMedia(constraints);
