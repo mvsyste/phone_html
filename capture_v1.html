@@ -88,7 +88,7 @@
         const stream = await navigator.mediaDevices.getUserMedia({
           audio: false,
           video: {
-            facingMode: { exact: "environment" }, // Selects the back camera
+            facingMode: { ideal: "environment" }, // Ask for back camera
             width: { ideal: 4000 },                 // Ask for highest resolution
             height: { ideal: 4000 }
           }
