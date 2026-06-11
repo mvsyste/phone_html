@@ -153,9 +153,10 @@
       const dataUrl = canvas.toDataURL('image/png');
       const link = document.createElement('a');
       link.href = dataUrl;
-      link.download = `cropped-capture-${imageCounter}.png`; 
+      //link.download = `cropped-capture-${imageCounter}.png`; 
+      link.download = `cropped-capture-${String(imageCounter).padStart(3, '0')}.png`;
       link.click();
-      document.getElementById("mvlog").textContent += `saved: cropped_capture_${imageCounter}.png`; 
+      document.getElementById("mvlog").textContent += `saved: cropped_capture_${imageCounter}.png\n`; 
       
       // Increment the counter for the next download
       imageCounter++;
