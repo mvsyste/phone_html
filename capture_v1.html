@@ -76,6 +76,8 @@
     // 1. Declare two external variables to store the size globally
     let streamWidth = 0;
     let streamHeight = 0;
+    // Initialize a global counter at the top of your script
+    let imageCounter = 1;
     
     // Start the camera with specific constraints
     async function startCamera() {
@@ -147,8 +149,11 @@
       const dataUrl = canvas.toDataURL('image/png');
       const link = document.createElement('a');
       link.href = dataUrl;
-      link.download = 'cropped-capture.png';
+      link.download = `cropped-capture-${imageCounter}.png`; 
       link.click();
+
+     // Increment the counter for the next download
+     imageCounter++;
     });
 
     // Initialize
