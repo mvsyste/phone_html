@@ -80,8 +80,10 @@
     let imageCounter = 1;
     
     // Start the camera with specific constraints
-    async function startCamera() {
-      try {
+    async function startCamera() 
+    {
+      try 
+      {
         const stream = await navigator.mediaDevices.getUserMedia({
           audio: false,
           video: {
@@ -136,7 +138,8 @@
               advanced: [advancedConstraints]
             }).catch(err => console.error("Applying track constraints failed:", err));
           }
-        };
+        }
+      };
         
       // Capture the 1000x1000 area and download as PNG
       captureBtn.addEventListener('click', () => {
