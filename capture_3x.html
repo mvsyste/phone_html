@@ -117,9 +117,21 @@
         videoFull.srcObject = stream;
         
         // Wait for video metadata to load to access tracks
-        video.onloadedmetadata = () => {
+        video.onloadedmetadata = () =>  {
           const track = stream.getVideoTracks()[0];
           
+          // Apply 2x zoom
+          if (track.getCapabilities && track.getCapabilities().zoom) {
+            const minZoom = track.getCapabilities().zoom.min;
+            const maxZoom = track.getCapabilities().zoom.max;
+            const targetZoom = Math.min(2, maxZoom); // 2x or capped at max
+            document.getElementById("mvlog").textContent += `zoom: ${targetZoom} ,maxZoom=${maxZoom}\n`;
+            
+            track.applyConstraints({
+              advanced: [{ zoom: targetZoom }]
+            }).catch(err => console.error("Zoom failed:", err));
+          }
+
           // Get the stream size and save it to the external variables
           const settings = track.getSettings();
           streamWidth = settings.width || video.videoWidth;
@@ -136,18 +148,6 @@
           video.style.top = offsety + 'px'; 
           video.style.left = offsetX + 'px'; 
           document.getElementById("mvlog").textContent += `Crop window, offset: ${videoW}x${videoH}, ${offsetX}x${offsety}\n`;
-          
-          // Apply 2x zoom
-          if (track.getCapabilities && track.getCapabilities().zoom) {
-            const minZoom = track.getCapabilities().zoom.min;
-            const maxZoom = track.getCapabilities().zoom.max;
-            const targetZoom = Math.min(2, maxZoom); // 2x or capped at max
-            document.getElementById("mvlog").textContent += `zoom: ${targetZoom} ,maxZoom=${maxZoom}\n`;
-            
-            track.applyConstraints({
-              advanced: [{ zoom: targetZoom }]
-            }).catch(err => console.error("Zoom failed:", err));
-          }
         };
 
       } catch (err) {
