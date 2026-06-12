@@ -123,7 +123,7 @@
           if (track.getCapabilities && track.getCapabilities().zoom) {
             const minZoom = track.getCapabilities().zoom.min;
             const maxZoom = track.getCapabilities().zoom.max;
-            const targetZoom = Math.min(2, maxZoom); // 2x or capped at max
+            const targetZoom = Math.min(1, maxZoom); // 2x or capped at max
             document.getElementById("mvlog").textContent += `zoom: ${targetZoom} ,maxZoom=${maxZoom}\n`;
             
             track.applyConstraints({
@@ -146,7 +146,7 @@
       // Get the actual width and height of the video source
       const actualWidth = streamWidth ;// video.videoWidth;
       const actualHeight = streamHeight; //video.videoHeight;
-      document.getElementById("mvlog").textContent += `streamWidth x streamHeight: ${streamWidth}x${streamWidth}\n`; 
+      document.getElementById("mvlog").textContent += `streamWidth x streamHeight: ${streamWidth}x${streamHeight}\n`; 
       
       // Target area: 1000x1000
       canvas.width = 1000;
