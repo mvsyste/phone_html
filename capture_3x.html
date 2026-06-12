@@ -81,9 +81,7 @@
   </style>
 </head>
 <body>
-  
-  <h2>Save Images Exp 1</h2>
-  
+  <h4>Save Images Exp 1</h4>
   <!-- Container 1: The Full Picture -->
   <div class="video-box regular-view">
     <video id="videoFull" autoplay playsinline muted></video>
@@ -150,7 +148,7 @@
           if (track.getCapabilities && track.getCapabilities().zoom) {
             const minZoom = track.getCapabilities().zoom.min;
             const maxZoom = track.getCapabilities().zoom.max;
-            const targetZoom = Math.min(1, maxZoom); // 2x or capped at max
+            const targetZoom = Math.min(2, maxZoom); // 2x or capped at max
             document.getElementById("mvlog").textContent += `zoom: ${targetZoom} ,maxZoom=${maxZoom}\n`;
             
             track.applyConstraints({
