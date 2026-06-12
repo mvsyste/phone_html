@@ -104,6 +104,18 @@
           const settings = track.getSettings();
           streamWidth = settings.width || video.videoWidth;
           streamHeight = settings.height || video.videoHeight;
+          document.getElementById("mvlog").textContent += "VideoStream: ${streamWidth}x${streamHeight}\n";
+          
+          // Dynamically update the #video element's width and height
+          let videoW = Math.min(2000, streamWidth);
+          let videoH = Math.min(2000, streamHeight);
+          video.style.width = videoW + 'px';
+          video.style.height = videoH + 'px';
+          let offsetX = -(streamWidth - videoW)/2;
+          let offsety = -(streamHeight - videoH)/2;
+          video.style.top = offsety + 'px'; 
+          video.style.left = offsetX + 'px'; 
+          document.getElementById("mvlog").textContent += "window, offset: ${videoW}x${videoH}, ${offsetX}x${offsety}\n";
           
           // Apply 2x zoom
           if (track.getCapabilities && track.getCapabilities().zoom) {
