@@ -40,7 +40,7 @@
     }
     #video {
       position: absolute;
-      width: 2000px;
+      width: 500px;
       top: -0px;  /* (2000 - 500) / 2 = 750px to center it vertically */
       left: -0px; /* (2000 - 500) / 2 = 750px to center it horizontally */
     }
@@ -74,7 +74,7 @@
   </style>
 </head>
 <body>
-  <h4>Save Images Exp. 4</h4>
+  <h4>Save Images Exp. 5</h4>
   <!-- Container 1: The full picture -->
   <div class="video-box regular-view">
     <video id="videoFull" autoplay playsinline muted></video>
@@ -139,8 +139,8 @@
           document.getElementById("mvlog").textContent += `VideoStream: ${streamWidth}x${streamHeight}\n`;
           
           // Dynamically update the #video element's width and height
-          let videoW = Math.min(2000, streamWidth);
-          let videoH = Math.min(2000, streamHeight);
+          let videoW = Math.min(500, streamWidth);
+          let videoH = Math.min(500, streamHeight);
           video.style.width = videoW + 'px';
           video.style.height = videoH + 'px';
           let offsetX = 0; // -(streamWidth - videoW)/2;
