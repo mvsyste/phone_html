@@ -27,31 +27,24 @@
       max-width: 500px;
       aspect-ratio: 16 / 9;
     }
-
-    
-    #stream-container {
-      position: relative;
-      width: 500px;
-      height: 500px;
-      margin: 0 auto;
-      overflow: hidden;
-      border: 3px solid #333;
-      border-radius: 8px;
-    }
-
-    /* Zooms & crops to show only a 2000x2000 area in a 500x500 box */
-    #video {
-      position: absolute;
-      width: 2000px;
-      height: 2000px;
-      top: -750px;
-      left: -750px;
-    }
     #videoFull {
       width: 100%;
       height: 100%;
       object-fit: cover; /* Fits perfectly inside the box */
     }
+    
+    .crop-view {
+      width: 500px;
+      height: 500px;
+    }
+    #video {
+      position: absolute;
+      width: 2000px;
+      height: 2000px;
+      top: -750px;  /* (2000 - 500) / 2 = 750px to center it vertically */
+      left: -750px; /* (2000 - 500) / 2 = 750px to center it horizontally */
+    }
+   
     /* Draws a 1000x1000 area at the center of the viewport */
     #overlay-rect {
       position: absolute;
@@ -82,13 +75,13 @@
 </head>
 <body>
   <h4>Save Images Exp 1</h4>
-  <!-- Container 1: The Full Picture -->
+  <!-- Container 1: The full picture -->
   <div class="video-box regular-view">
     <video id="videoFull" autoplay playsinline muted></video>
   </div>
-  
-  <div id="stream-container">
-    <video id="video" autoplay playsinline></video>
+  <!-- Container 2: The crop picture -->
+  <div class="video-box crop-view">
+    <video id="video" autoplay playsinline muted></video>
     <div id="overlay-rect"></div>
   </div>
 
