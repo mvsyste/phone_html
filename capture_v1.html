@@ -75,7 +75,7 @@
   <div id="mvlog">Log:</div>
   
   <script>
-    document.getElementById("mvlog").textContent += " starting javascript...";
+    document.getElementById("mvlog").textContent += ` starting javascript...`;
     const video = document.getElementById('video');
     const captureBtn = document.getElementById('capture-btn');
     // 1. Declare two external variables to store the size globally
@@ -106,7 +106,7 @@
           const settings = track.getSettings();
           streamWidth = settings.width || video.videoWidth;
           streamHeight = settings.height || video.videoHeight;
-          document.getElementById("mvlog").textContent += "VideoStream: ${streamWidth}x${streamHeight}\n";
+          document.getElementById("mvlog").textContent += `VideoStream: ${streamWidth}x${streamHeight}\n`;
           
           // Dynamically update the #video element's width and height
           let videoW = Math.min(2000, streamWidth);
@@ -117,14 +117,14 @@
           let offsety = -(streamHeight - videoH)/2;
           video.style.top = offsety + 'px'; 
           video.style.left = offsetX + 'px'; 
-          document.getElementById("mvlog").textContent += "Crop window, offset: ${videoW}x${videoH}, ${offsetX}x${offsety}\n";
+          document.getElementById("mvlog").textContent += `Crop window, offset: ${videoW}x${videoH}, ${offsetX}x${offsety}\n`;
           
           // Apply 2x zoom
           if (track.getCapabilities && track.getCapabilities().zoom) {
             const minZoom = track.getCapabilities().zoom.min;
             const maxZoom = track.getCapabilities().zoom.max;
             const targetZoom = Math.min(2, maxZoom); // 2x or capped at max
-            document.getElementById("mvlog").textContent += "zoom: ${targetZoom} ,maxZoom=${maxZoom}\n";
+            document.getElementById("mvlog").textContent += `zoom: ${targetZoom} ,maxZoom=${maxZoom}\n`;
             
             track.applyConstraints({
               advanced: [{ zoom: targetZoom }]
@@ -146,6 +146,7 @@
       // Get the actual width and height of the video source
       const actualWidth = streamWidth ;// video.videoWidth;
       const actualHeight = streamHeight; //video.videoHeight;
+      document.getElementById("mvlog").textContent += `streamWidth x streamHeight: ${streamWidth}x${streamWidth}\n`; 
       
       // Target area: 1000x1000
       canvas.width = 1000;
@@ -163,7 +164,8 @@
         0, 0,                   // Destination X, Y
         1000, 1000              // Destination width, height
       );
-
+      document.getElementById("mvlog").textContent += `video cropped  sx,sy: ${sx},${sy}\n`; 
+      
       // Convert canvas to PNG and trigger download
       const dataUrl = canvas.toDataURL('image/png');
       const link = document.createElement('a');
