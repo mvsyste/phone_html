@@ -115,13 +115,14 @@
           let offsety = -(streamHeight - videoH)/2;
           video.style.top = offsety + 'px'; 
           video.style.left = offsetX + 'px'; 
-          document.getElementById("mvlog").textContent += "window, offset: ${videoW}x${videoH}, ${offsetX}x${offsety}\n";
+          document.getElementById("mvlog").textContent += "Crop window, offset: ${videoW}x${videoH}, ${offsetX}x${offsety}\n";
           
           // Apply 2x zoom
           if (track.getCapabilities && track.getCapabilities().zoom) {
             const minZoom = track.getCapabilities().zoom.min;
             const maxZoom = track.getCapabilities().zoom.max;
-            const targetZoom = Math.min(minZoom * 2, maxZoom); // 2x or capped at max
+            const targetZoom = Math.min(2, maxZoom); // 2x or capped at max
+            document.getElementById("mvlog").textContent += "zoom: ${targetZoom} ,maxZoom=${maxZoom}\n";
             
             track.applyConstraints({
               advanced: [{ zoom: targetZoom }]
