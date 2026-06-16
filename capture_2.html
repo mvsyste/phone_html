@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Environment Camera Center Crop</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+      background: #f5f5f5;
+      color: #222;
+    }
+
+    h1 {
+      font-size: 20px;
+    }
+
+    .controls {
+      margin: 12px 0;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    button {
+      padding: 10px 14px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+
+    .status {
+      margin: 10px 0;
+      font-size: 14px;
+      color: #444;
+    }
+
+    canvas {
+      border: 1px solid #999;
+      background: #000;
+      width: 600px;
+      height: 600px;
+      max-width: 90vw;
+      max-height: 90vw;
+      image-rendering: auto;
+    }
+
+    video {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <h1>Environment Camera Center Crop Viewer</h1>
+
+  <div class="controls">
+    <button id="startBtn">Start Camera</button>
+    <button id="saveBtn" disabled>Save Image</button>
+    <button id="stopBtn" disabled>Stop Camera</button>
+  </div>
+
+  <div class="status" id="status">Idle</div>
+
+  <video id="video" autoplay playsinline muted></video>
+  <canvas id="canvas" width="2000" height="2000"></canvas>
+
+  <script>
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d', { alpha: false });
+    const statusEl = document.getElementById('status');
+    const startBtn = document.getElementById('startBtn');
+    const saveBtn = document.getElementById('saveBtn');
+    const stopBtn = document.getElementById('stopBtn');
+
+    let stream = null;
+    let animationId = null;
+    let imageFileHandle = null;
+
+    const OUTPUT_SIZE = 2000;
+    const DESIRED_ZOOM = 2;
+
+    function setStatus(msg) {
+      statusEl.textContent = msg;
+    }
+
+    async function startCamera() {
+      try {
+        setStatus('Requesting environment camera...');
+
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: {
+            facingMode: { ideal: 'environment' },
+            width: { ideal: 99999 },
+            height: { ideal: 99999 }
+          }
+        });
+
+        video.srcObject = stream;
+        await video.play();
+
+        const track = stream.getVideoTracks()[0];
+        const capabilities = track.getCapabilities ? track.getCapabilities() : {};
+        const settings = track.getSettings ? track.getSettings() : {};
+
+        setStatus(
+          `Camera started. Resolution: ${settings.width || '?'}x${settings.height || '?'}`
+        );
+
+        if (capabilities.zoom) {
+          const zoom = Math.min(
+            Math.max(DESIRED_ZOOM, capabilities.zoom.min),
+            capabilities.zoom.max
+          );
+
+          try {
+            await track.applyConstraints({
+              advanced: [{ zoom }]
+            });
+            const updated = track.getSettings ? track.getSettings() : {};
+            setStatus(
+              `Camera started. Resolution: ${updated.width || settings.width || '?'}x${updated.height || settings.height || '?'} | Zoom: ${updated.zoom || zoom}`
+            );
+          } catch (zoomErr) {
+            setStatus(
+              `Camera started. Resolution: ${settings.width || '?'}x${settings.height || '?'} | Zoom not supported by this browser/device`
+            );
+          }
+        } else {
+          setStatus(
+            `Camera started. Resolution: ${settings.width || '?'}x${settings.height || '?'} | Zoom capability not available`
+          );
+        }
+
+        startRendering();
+        saveBtn.disabled = false;
+        stopBtn.disabled = false;
+        startBtn.disabled = true;
+      } catch (err) {
+        console.error(err);
+        setStatus(`Failed to start camera: ${err.message}`);
+      }
+    }
+
+    function startRendering() {
+      function render() {
+        if (video.videoWidth > 0 && video.videoHeight > 0) {
+          const vw = video.videoWidth;
+          const vh = video.videoHeight;
+
+          const cropSize = Math.min(OUTPUT_SIZE, vw, vh);
+          const sx = Math.floor((vw - cropSize) / 2);
+          const sy = Math.floor((vh - cropSize) / 2);
+
+          ctx.drawImage(
+            video,
+            sx, sy, cropSize, cropSize,
+            0, 0, OUTPUT_SIZE, OUTPUT_SIZE
+          );
+        }
+
+        animationId = requestAnimationFrame(render);
+      }
+
+      render();
+    }
+
+    function stopCamera() {
+      if (animationId) {
+        cancelAnimationFrame(animationId);
+        animationId = null;
+      }
+
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+        stream = null;
+      }
+
+      video.srcObject = null;
+      saveBtn.disabled = true;
+      stopBtn.disabled = true;
+      startBtn.disabled = false;
+      setStatus('Camera stopped');
+    }
+
+    async function saveImage() {
+      try {
+        if ('showSaveFilePicker' in window) {
+          const handle = await window.showSaveFilePicker({
+            suggestedName: `capture-${Date.now()}.png`,
+            types: [
+              {
+                description: 'PNG Image',
+                accept: { 'image/png': ['.png'] }
+              }
+            ]
+          });
+
+          const blob = await new Promise(resolve => {
+            canvas.toBlob(resolve, 'image/png');
+          });
+
+          const writable = await handle.createWritable();
+          await writable.write(blob);
+          await writable.close();
+
+          setStatus('Image saved successfully');
+        } else {
+          const link = document.createElement('a');
+          link.download = `capture-${Date.now()}.png`;
+          link.href = canvas.toDataURL('image/png');
+          link.click();
+          setStatus('Image downloaded');
+        }
+      } catch (err) {
+        console.error(err);
+        setStatus(`Save cancelled or failed: ${err.message}`);
+      }
+    }
+
+    startBtn.addEventListener('click', startCamera);
+    stopBtn.addEventListener('click', stopCamera);
+    saveBtn.addEventListener('click', saveImage);
+  </script>
+</body>
+</html>
