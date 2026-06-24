@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Image Capture</title>
+  <style>
+    :root {
+      --preview-size: 500px;
+      --save-ratio: 0.5;
+      --accent: #0d6efd;
+      --border: #1f2937;
+      --bg: #f3f4f6;
+      --card: #ffffff;
+      --danger: #e11d48;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 24px;
+      font-family: Arial, sans-serif;
+      background: var(--bg);
+      color: #111827;
+      display: flex;
+      justify-content: center;
+    }
+
+    .app {
+      width: min(92vw, 680px);
+      text-align: center;
+    }
+
+    .title-row {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .editable-title {
+      margin: 0;
+      min-width: 140px;
+      padding: 8px 12px;
+      border-radius: 10px;
+      background: var(--card);
+      border: 2px solid transparent;
+      outline: none;
+      cursor: text;
+      user-select: text;
+    }
+
+    .editable-title:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.15);
+    }
+
+    .title-hint {
+      width: 100%;
+      font-size: 13px;
+      color: #6b7280;
+      margin-top: -6px;
+      margin-bottom: 8px;
+    }
+
+    .plus-btn {
+      width: 34px;
+      height: 34px;
+      border: none;
+      border-radius: 999px;
+      background: var(--accent);
+      color: #fff;
+      font-size: 22px;
+      line-height: 1;
+      cursor: pointer;
+    }
+
+    .plus-btn:disabled {
+      opacity: 0.45;
+      cursor: default;
+    }
+
+    .viewer {
+      position: relative;
+      width: min(92vw, var(--preview-size));
+      aspect-ratio: 1 / 1;
+      margin: 0 auto 16px;
+      border: 3px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+      background: #000;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      background: #000;
+    }
+
+    .overlay-rect {
+      position: absolute;
+      top: 25%;
+      left: 25%;
+      width: 50%;
+      height: 50%;
+      border: 3px dashed var(--danger);
+      border-radius: 6px;
+      pointer-events: none;
+      box-shadow: 0 0 0 200vmax rgba(0, 0, 0, 0.18);
+    }
+
+    .controls {
+      display: flex;
+      justify-content: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+
+    button {
+      padding: 12px 18px;
+      border: none;
+      border-radius: 10px;
+      font-size: 15px;
+      cursor: pointer;
+    }
+
+    .primary-btn {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .secondary-btn {
+      background: #374151;
+      color: #fff;
+    }
+
+    button:disabled {
+      opacity: 0.55;
+      cursor: default;
+    }
+
+    .status,
+    .details {
+      background: var(--card);
+      border-radius: 12px;
+      padding: 12px 14px;
+      text-align: left;
+      margin-top: 10px;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
+    }
+
+    .status {
+      font-weight: 600;
+    }
+
+    .details {
+      font-family: Consolas, monospace;
+      white-space: pre-wrap;
+      font-size: 13px;
+      color: #374151;
+    }
+
+    video {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="title-row">
+      <h1 id="titleText" class="editable-title" contenteditable="true" spellcheck="false">Item_01</h1>
+      <button id="plusBtn" class="plus-btn" type="button" aria-label="Increase title number">+</button>
+      <div class="title-hint">Tap the title to edit it. Changing the title resets the image counter.</div>
+    </div>
+
+    <div class="viewer">
+      <video id="video" autoplay playsinline muted></video>
+      <canvas id="previewCanvas" width="2000" height="2000"></canvas>
+      <div class="overlay-rect" aria-hidden="true"></div>
+    </div>
+
+    <div class="controls">
+      <button id="startBtn" class="secondary-btn" type="button">Start Camera</button>
+      <button id="captureBtn" class="primary-btn" type="button" disabled>Save 1000x1000 area</button>
+      <button id="stopBtn" class="secondary-btn" type="button" disabled>Stop Camera</button>
+    </div>
+
+    <div id="status" class="status">Idle</div>
+    <div id="details" class="details">Waiting to start camera.</div>
+  </div>
+
+  <script>
+    const PREVIEW_SIZE = 2000;
+    const SAVE_SIZE = 1000;
+
+    const video = document.getElementById('video');
+    const previewCanvas = document.getElementById('previewCanvas');
+    const previewCtx = previewCanvas.getContext('2d', { alpha: false });
+    const titleText = document.getElementById('titleText');
+    const plusBtn = document.getElementById('plusBtn');
+    const startBtn = document.getElementById('startBtn');
+    const captureBtn = document.getElementById('captureBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const statusEl = document.getElementById('status');
+    const detailsEl = document.getElementById('details');
+
+    let stream = null;
+    let animationId = null;
+    let imageCounter = 1;
+    let previewSource = null;
+
+    function setStatus(message) {
+      statusEl.textContent = message;
+    }
+
+    function setDetails(message) {
+      detailsEl.textContent = message;
+    }
+
+    function sanitizeFilenamePart(text) {
+      return text
+        .trim()
+        .replace(/[\\/:*?"<>|]+/g, '-')
+        .replace(/\s+/g, '_')
+        .replace(/_+/g, '_')
+        .replace(/^[_.-]+|[_.-]+$/g, '') || 'image';
+    }
+
+    function resetImageCounter() {
+      imageCounter = 1;
+      setStatus(`Title updated. Image counter reset to ${imageCounter}.`);
+    }
+
+    function getTitleValue() {
+      return titleText.textContent.trim().replace(/\s+/g, ' ');
+    }
+
+    function setTitleValue(value, shouldResetCounter = true) {
+      const cleanValue = value.trim().replace(/\s+/g, ' ') || 'Item_01';
+      titleText.textContent = cleanValue;
+      updatePlusButton();
+
+      if (shouldResetCounter) {
+        resetImageCounter();
+      }
+    }
+
+    function updatePlusButton() {
+      const hasTrailingNumber = /(\d+)\s*$/.test(getTitleValue());
+      plusBtn.hidden = !hasTrailingNumber;
+      plusBtn.disabled = !hasTrailingNumber;
+    }
+
+    function incrementTitleNumber() {
+      const currentTitle = getTitleValue();
+      const match = currentTitle.match(/^(.*?)(\d+)\s*$/);
+      if (!match) {
+        updatePlusButton();
+        return;
+      }
+
+      const prefix = match[1];
+      const digits = match[2];
+      const nextNumber = String(Number(digits) + 1).padStart(digits.length, '0');
+      setTitleValue(`${prefix}${nextNumber}`);
+      titleText.focus();
+      placeCaretAtEnd(titleText);
+    }
+
+    function placeCaretAtEnd(element) {
+      const selection = window.getSelection();
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      range.collapse(false);
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
+
+    function buildPreviewSource() {
+      const vw = video.videoWidth;
+      const vh = video.videoHeight;
+
+      if (!vw || !vh) {
+        return null;
+      }
+
+      const cropSize = Math.min(PREVIEW_SIZE, vw, vh);
+      const sx = Math.floor((vw - cropSize) / 2);
+      const sy = Math.floor((vh - cropSize) / 2);
+
+      return {
+        sourceX: sx,
+        sourceY: sy,
+        sourceSize: cropSize,
+        displaySize: PREVIEW_SIZE
+      };
+    }
+
+    function renderFrame() {
+      if (video.readyState >= 2) {
+        previewSource = buildPreviewSource();
+
+        if (previewSource) {
+          previewCtx.drawImage(
+            video,
+            previewSource.sourceX,
+            previewSource.sourceY,
+            previewSource.sourceSize,
+            previewSource.sourceSize,
+            0,
+            0,
+            PREVIEW_SIZE,
+            PREVIEW_SIZE
+          );
+        }
+      }
+
+      animationId = requestAnimationFrame(renderFrame);
+    }
+
+    function startRendering() {
+      if (animationId) {
+        cancelAnimationFrame(animationId);
+      }
+      renderFrame();
+    }
+
+    function stopRendering() {
+      if (animationId) {
+        cancelAnimationFrame(animationId);
+        animationId = null;
+      }
+    }
+
+    async function startCamera() {
+      try {
+        setStatus('Requesting environment camera...');
+        setDetails('Starting camera.');
+
+        if (stream) {
+          stopCamera();
+        }
+
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: {
+            facingMode: { ideal: 'environment' },
+            width: { ideal: 4000 },
+            height: { ideal: 4000 }
+          }
+        });
+
+        video.srcObject = stream;
+        await video.play();
+        await new Promise(resolve => {
+          if (video.readyState >= 1) {
+            resolve();
+            return;
+          }
+          video.onloadedmetadata = () => resolve();
+        });
+
+        const track = stream.getVideoTracks()[0];
+        const settings = track.getSettings ? track.getSettings() : {};
+        previewSource = buildPreviewSource();
+        startRendering();
+
+        startBtn.disabled = true;
+        stopBtn.disabled = false;
+        captureBtn.disabled = false;
+
+        const sourceSize = previewSource ? previewSource.sourceSize : 0;
+        const saveSourceSize = Math.round(sourceSize * (SAVE_SIZE / PREVIEW_SIZE));
+
+        setStatus('Camera started. The dashed rectangle shows the saved 1000 x 1000 area.');
+        setDetails([
+          `Stream resolution: ${settings.width || video.videoWidth} x ${settings.height || video.videoHeight}`,
+          `Preview crop: centered ${sourceSize} x ${sourceSize} mapped to 2000 x 2000`,
+          `Saved crop: centered ${saveSourceSize} x ${saveSourceSize} mapped to 1000 x 1000`,
+          `Next filename: ${sanitizeFilenamePart(getTitleValue())}_${String(imageCounter).padStart(3, '0')}.png`
+        ].join('\n'));
+      } catch (error) {
+        console.error(error);
+        setStatus(`Failed to start camera: ${error.message}`);
+        setDetails('Camera access failed. On mobile, use HTTPS and allow camera permission.');
+      }
+    }
+
+    function stopCamera() {
+      stopRendering();
+
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+        stream = null;
+      }
+
+      video.srcObject = null;
+      previewSource = null;
+      previewCtx.fillStyle = '#000';
+      previewCtx.fillRect(0, 0, PREVIEW_SIZE, PREVIEW_SIZE);
+
+      startBtn.disabled = false;
+      stopBtn.disabled = true;
+      captureBtn.disabled = true;
+
+      setStatus('Camera stopped.');
+      setDetails(`Next filename: ${sanitizeFilenamePart(getTitleValue())}_${String(imageCounter).padStart(3, '0')}.png`);
+    }
+
+    function getSaveSourceRect() {
+      if (!previewSource) {
+        return null;
+      }
+
+      const scale = SAVE_SIZE / PREVIEW_SIZE;
+      const saveSourceSize = previewSource.sourceSize * scale;
+      const saveSourceX = previewSource.sourceX + (previewSource.sourceSize - saveSourceSize) / 2;
+      const saveSourceY = previewSource.sourceY + (previewSource.sourceSize - saveSourceSize) / 2;
+
+      return {
+        sx: saveSourceX,
+        sy: saveSourceY,
+        sSize: saveSourceSize
+      };
+    }
+
+    async function saveImage() {
+      if (!stream || !previewSource) {
+        setStatus('Start the camera before saving.');
+        return;
+      }
+
+      const rect = getSaveSourceRect();
+      if (!rect) {
+        setStatus('Could not calculate the save area.');
+        return;
+      }
+
+      const saveCanvas = document.createElement('canvas');
+      saveCanvas.width = SAVE_SIZE;
+      saveCanvas.height = SAVE_SIZE;
+      const saveCtx = saveCanvas.getContext('2d', { alpha: false });
+
+      saveCtx.drawImage(
+        video,
+        rect.sx,
+        rect.sy,
+        rect.sSize,
+        rect.sSize,
+        0,
+        0,
+        SAVE_SIZE,
+        SAVE_SIZE
+      );
+
+      const filename = `${sanitizeFilenamePart(getTitleValue())}_${String(imageCounter).padStart(3, '0')}.png`;
+      const blob = await new Promise(resolve => saveCanvas.toBlob(resolve, 'image/png'));
+
+      if (!blob) {
+        setStatus('Failed to generate the image file.');
+        return;
+      }
+
+      try {
+        if ('showSaveFilePicker' in window) {
+          const handle = await window.showSaveFilePicker({
+            suggestedName: filename,
+            types: [
+              {
+                description: 'PNG Image',
+                accept: { 'image/png': ['.png'] }
+              }
+            ]
+          });
+
+          const writable = await handle.createWritable();
+          await writable.write(blob);
+          await writable.close();
+        } else {
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = filename;
+          link.click();
+          setTimeout(() => URL.revokeObjectURL(url), 1000);
+        }
+
+        setStatus(`Saved ${filename}`);
+        imageCounter += 1;
+        setDetails([
+          `Title: ${getTitleValue()}`,
+          `Saved file: ${filename}`,
+          `Saved area: centered 1000 x 1000 output from the dashed rectangle area`,
+          `Next filename: ${sanitizeFilenamePart(getTitleValue())}_${String(imageCounter).padStart(3, '0')}.png`
+        ].join('\n'));
+      } catch (error) {
+        console.error(error);
+        setStatus(`Save cancelled or failed: ${error.message}`);
+      }
+    }
+
+    titleText.addEventListener('focus', () => {
+      placeCaretAtEnd(titleText);
+    });
+
+    titleText.addEventListener('pointerdown', () => {
+      setTimeout(() => titleText.focus(), 0);
+    });
+
+    titleText.addEventListener('input', () => {
+      updatePlusButton();
+    });
+
+    titleText.addEventListener('blur', () => {
+      const before = getTitleValue();
+      setTitleValue(before);
+      setDetails(`Next filename: ${sanitizeFilenamePart(getTitleValue())}_${String(imageCounter).padStart(3, '0')}.png`);
+    });
+
+    titleText.addEventListener('keydown', event => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        titleText.blur();
+      }
+    });
+
+    plusBtn.addEventListener('click', incrementTitleNumber);
+    startBtn.addEventListener('click', startCamera);
+    stopBtn.addEventListener('click', stopCamera);
+    captureBtn.addEventListener('click', saveImage);
+
+    updatePlusButton();
+    startCamera();
+  </script>
+</body>
+</html>
