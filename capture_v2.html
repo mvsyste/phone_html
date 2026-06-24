@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -200,6 +201,7 @@
   <script>
     const PREVIEW_SIZE = 2000;
     const SAVE_SIZE = 1000;
+    const CAMERA_ZOOM = 2;
 
     const video = document.getElementById('video');
     const previewCanvas = document.getElementById('previewCanvas');
@@ -369,7 +371,27 @@
         });
 
         const track = stream.getVideoTracks()[0];
-        const settings = track.getSettings ? track.getSettings() : {};
+        const capabilities = track.getCapabilities ? track.getCapabilities() : {};
+        const initialSettings = track.getSettings ? track.getSettings() : {};
+        let appliedZoom = initialSettings.zoom || null;
+
+        if (capabilities.zoom) {
+          const minZoom = capabilities.zoom.min ?? CAMERA_ZOOM;
+          const maxZoom = capabilities.zoom.max ?? CAMERA_ZOOM;
+          const targetZoom = Math.min(Math.max(CAMERA_ZOOM, minZoom), maxZoom);
+
+          try {
+            await track.applyConstraints({
+              advanced: [{ zoom: targetZoom }]
+            });
+            const updatedSettings = track.getSettings ? track.getSettings() : {};
+            appliedZoom = updatedSettings.zoom || targetZoom;
+          } catch (zoomError) {
+            console.warn('Failed to apply camera zoom:', zoomError);
+          }
+        }
+
+        const settings = track.getSettings ? track.getSettings() : initialSettings;
         previewSource = buildPreviewSource();
         startRendering();
 
@@ -383,6 +405,7 @@
         setStatus('Camera started. The dashed rectangle shows the saved 1000 x 1000 area.');
         setDetails([
           `Stream resolution: ${settings.width || video.videoWidth} x ${settings.height || video.videoHeight}`,
+          `Camera zoom: ${appliedZoom ? `${appliedZoom}x` : 'Not supported'}`,
           `Preview crop: centered ${sourceSize} x ${sourceSize} mapped to 2000 x 2000`,
           `Saved crop: centered ${saveSourceSize} x ${saveSourceSize} mapped to 1000 x 1000`,
           `Next filename: ${sanitizeFilenamePart(getTitleValue())}_${String(imageCounter).padStart(3, '0')}.png`
@@ -470,40 +493,28 @@
       }
 
       try {
-        if ('showSaveFilePicker' in window) {
-          const handle = await window.showSaveFilePicker({
-            suggestedName: filename,
-            types: [
-              {
-                description: 'PNG Image',
-                accept: { 'image/png': ['.png'] }
-              }
-            ]
-          });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
 
-          const writable = await handle.createWritable();
-          await writable.write(blob);
-          await writable.close();
-        } else {
-          const url = URL.createObjectURL(blob);
-          const link = document.createElement('a');
-          link.href = url;
-          link.download = filename;
-          link.click();
-          setTimeout(() => URL.revokeObjectURL(url), 1000);
-        }
-
-        setStatus(`Saved ${filename}`);
+        setStatus(`Downloaded ${filename}`);
         imageCounter += 1;
         setDetails([
           `Title: ${getTitleValue()}`,
           `Saved file: ${filename}`,
+          `Save method: direct download to avoid a large save confirmation view`,
           `Saved area: centered 1000 x 1000 output from the dashed rectangle area`,
           `Next filename: ${sanitizeFilenamePart(getTitleValue())}_${String(imageCounter).padStart(3, '0')}.png`
         ].join('\n'));
       } catch (error) {
         console.error(error);
-        setStatus(`Save cancelled or failed: ${error.message}`);
+        setStatus(`Save failed: ${error.message}`);
       }
     }
 
@@ -542,3 +553,5 @@
   </script>
 </body>
 </html>
+
+
