@@ -453,24 +453,10 @@
         sy: saveSourceY,
         sSize: saveSourceSize
       };
-    }
+    } 
+    
     async function saveImage() 
     {
-        // Check for iOS (iPhone, iPad, iPod)
-        // Note: Modern iPads (iPadOS) return 'MacIntel' as the platform.
-        // We bypass this by validating multi-touch support alongside the Mac platform name.
-        if (/iPad|iPhone|iPod/.test(ua) || 
-            (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) 
-        {
-           saveImage_iOS();
-        }
-        else 
-        {
-          saveImage_Other();
-        }
-    }
-    
-    async function saveImage_Other() {
       if (!stream || !previewSource) {
         setStatus('Start the camera before saving.');
         return;
@@ -500,37 +486,56 @@
       );
 
       const filename = `${sanitizeFilenamePart(getTitleValue())}_${String(imageCounter).padStart(3, '0')}.png`;
-      const blob = await new Promise(resolve => saveCanvas.toBlob(resolve, 'image/png'));
 
-      if (!blob) {
-        setStatus('Failed to generate the image file.');
-        return;
-      }
-
-      try {
-        const url = URL.createObjectURL(blob);
+      
+      // IOS Convert canvas to PNG and trigger download
+      if (/iPad|iPhone|iPod/.test(ua) || 
+            (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) 
+      {
+        const dataUrl = canvas.toDataURL('image/png');
         const link = document.createElement('a');
-        link.href = url;
+        link.href = dataUrl;        
         link.download = filename;
-        link.style.display = 'none';
-        document.body.appendChild(link);
         link.click();
-        link.remove();
-        setTimeout(() => URL.revokeObjectURL(url), 1000);
-
-        setStatus(`Downloaded ${filename}`);
-        imageCounter += 1;
-        setDetails([
-          `Title: ${getTitleValue()}`,
-          `Saved file: ${filename}`,
-          `Save method: direct download to avoid a large save confirmation view`,
-          `Saved area: centered 1000 x 1000 output from the dashed rectangle area`,
-          `Next filename: ${sanitizeFilenamePart(getTitleValue())}_${String(imageCounter).padStart(3, '0')}.png`
-        ].join('\n'));
-      } catch (error) {
-        console.error(error);
-        setStatus(`Save failed: ${error.message}`);
+        document.getElementById("mvlog").textContent += `saved: cropped_capture_${imageCounter}.png\n`; 
       }
+      else
+      { // Android, desktop, etc.             
+        const blob = await new Promise(resolve => saveCanvas.toBlob(resolve, 'image/png'));
+
+        if (!blob) {
+          setStatus('Failed to generate the image file.');
+          return;
+        }
+        else
+        {
+          try 
+          {
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = filename;
+            link.style.display = 'none';
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+    
+            setStatus(`Downloaded ${filename}`);
+            imageCounter += 1;
+            setDetails([
+              `Title: ${getTitleValue()}`,
+              `Saved file: ${filename}`,
+              `Save method: direct download to avoid a large save confirmation view`,
+              `Saved area: centered 1000 x 1000 output from the dashed rectangle area`,
+              `Next filename: ${sanitizeFilenamePart(getTitleValue())}_${String(imageCounter).padStart(3, '0')}.png`
+            ].join('\n'));
+          } catch (error) {
+            console.error(error);
+            setStatus(`Save failed: ${error.message}`);
+          }
+        }
+      } // end of other platform save 
     }
 
     titleText.addEventListener('focus', () => {
