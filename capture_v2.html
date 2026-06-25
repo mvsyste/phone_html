@@ -454,8 +454,23 @@
         sSize: saveSourceSize
       };
     }
-
-    async function saveImage() {
+    async function saveImage() 
+    {
+        // Check for iOS (iPhone, iPad, iPod)
+        // Note: Modern iPads (iPadOS) return 'MacIntel' as the platform.
+        // We bypass this by validating multi-touch support alongside the Mac platform name.
+        if (/iPad|iPhone|iPod/.test(ua) || 
+            (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) 
+        {
+           saveImage_iOS();
+        }
+        else 
+        {
+          saveImage_Other();
+        }
+    }
+    
+    async function saveImage_Other() {
       if (!stream || !previewSource) {
         setStatus('Start the camera before saving.');
         return;
