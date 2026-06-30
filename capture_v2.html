@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -484,20 +483,23 @@
         SAVE_SIZE,
         SAVE_SIZE
       );
-
+      
+      let saved_image = false;
+      let saveMethod = 'direct download';
       const filename = `${sanitizeFilenamePart(getTitleValue())}_${String(imageCounter).padStart(3, '0')}.png`;
-
       const ua = navigator.userAgent;
-      // IOS Convert canvas to PNG and trigger download
+
+      // iOS: convert canvas to PNG and trigger download
       if (/iPad|iPhone|iPod/.test(ua) || 
             (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) 
       {
         const dataUrl = saveCanvas.toDataURL('image/png');
         const link = document.createElement('a');
-        link.href = dataUrl;        
+        link.href = dataUrl;
         link.download = filename;
         link.click();
-        document.getElementById("mvlog").textContent += `saved: cropped_capture_${imageCounter}.png\n`; 
+        saveMethod = 'iOS data URL download';
+        saved_image = true;
       }
       else
       { // Android, desktop, etc.             
@@ -520,22 +522,25 @@
             link.click();
             link.remove();
             setTimeout(() => URL.revokeObjectURL(url), 1000);
-    
-            setStatus(`Downloaded ${filename}`);
-            imageCounter += 1;
-            setDetails([
-              `Title: ${getTitleValue()}`,
-              `Saved file: ${filename}`,
-              `Save method: direct download to avoid a large save confirmation view`,
-              `Saved area: centered 1000 x 1000 output from the dashed rectangle area`,
-              `Next filename: ${sanitizeFilenamePart(getTitleValue())}_${String(imageCounter).padStart(3, '0')}.png`
-            ].join('\n'));
+            saveMethod = 'direct download';
+            saved_image = true;
           } catch (error) {
             console.error(error);
             setStatus(`Save failed: ${error.message}`);
           }
         }
       } // end of other platform save 
+      if (saved_image){
+        setStatus(`Downloaded ${filename}`);
+        imageCounter += 1;
+        setDetails([
+          `Title: ${getTitleValue()}`,
+          `Saved file: ${filename}`,
+          `Save method: ${saveMethod}`,
+          `Saved area: centered 1000 x 1000 output from the dashed rectangle area`,
+          `Next filename: ${sanitizeFilenamePart(getTitleValue())}_${String(imageCounter).padStart(3, '0')}.png`
+        ].join('\n'));
+      }
     }
 
     titleText.addEventListener('focus', () => {
@@ -552,7 +557,9 @@
 
     titleText.addEventListener('blur', () => {
       const before = getTitleValue();
-      setTitleValue(before);
+      const normalized = before.trim().replace(/\s+/g, ' ') || 'Item_01';
+      const changed = normalized !== titleText.textContent;
+      setTitleValue(before, changed);
       setDetails(`Next filename: ${sanitizeFilenamePart(getTitleValue())}_${String(imageCounter).padStart(3, '0')}.png`);
     });
 
