@@ -487,12 +487,12 @@
 
       const filename = `${sanitizeFilenamePart(getTitleValue())}_${String(imageCounter).padStart(3, '0')}.png`;
 
-      
+      const ua = navigator.userAgent;
       // IOS Convert canvas to PNG and trigger download
       if (/iPad|iPhone|iPod/.test(ua) || 
             (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) 
       {
-        const dataUrl = canvas.toDataURL('image/png');
+        const dataUrl = saveCanvas.toDataURL('image/png');
         const link = document.createElement('a');
         link.href = dataUrl;        
         link.download = filename;
