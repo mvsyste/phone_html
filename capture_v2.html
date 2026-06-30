@@ -87,9 +87,11 @@
 
     .viewer {
       position: relative;
-      width: min(92vw, var(--preview-size));
+      width: 100vw;
+      max-width: 100vw;
       aspect-ratio: 1 / 1;
-      margin: 0 auto 16px;
+      margin: 0 0 16px;
+      margin-left: calc(50% - 50vw);
       border: 3px solid var(--border);
       border-radius: 14px;
       overflow: hidden;
