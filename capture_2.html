@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- iPhone Safari center-crop camera: serve over HTTPS and save prepared PNGs with a direct user tap. -->
+<!-- Self-contained iPhone Safari camera: PNG captures, optional sequence ZIPs, and selfCheck(); serve over HTTPS. -->
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -51,11 +51,43 @@
     }
     #saveBtn:active { background: #b51010; }
     #downloadLink { display: inline-block; color: #fff; background: #0065cc; border-radius: 8px; }
+    .capture-controls { display: grid; grid-template-columns: 1fr 76px 1fr; }
+    #sequenceBtn {
+      justify-self: start;
+      width: 64px;
+      padding: 8px 4px;
+      border: 2px solid #fff;
+      border-radius: 10px;
+      background: #000;
+      color: #fff;
+      font-size: 12px;
+    }
+    #sequenceBtn[aria-pressed="true"] { background: #e11919; }
+    #sequencePanel { max-width: 600px; margin: 0 auto; font-size: 14px; }
+    #imageList { max-height: 150px; overflow: auto; text-align: left; overflow-wrap: anywhere; }
 
     .status {
       margin: 10px 0;
       font-size: 14px;
       color: #444;
+    }
+
+    .preview {
+      position: relative;
+      width: min(100%, 600px, 55dvh);
+      margin: 0 auto;
+    }
+
+    #zoomBtn {
+      position: absolute;
+      top: 8px;
+      left: 8px;
+      z-index: 1;
+      min-width: 56px;
+      border: 1px solid #fff;
+      border-radius: 22px;
+      background: rgba(0, 0, 0, .75);
+      color: #fff;
     }
 
     canvas {
@@ -64,7 +96,7 @@
       display: block;
       margin: 0 auto;
       max-width: 100%;
-      width: min(100%, 600px, 55dvh);
+      width: 100%;
       height: auto;
       image-rendering: auto;
     }
@@ -84,19 +116,32 @@
   <div class="status" id="status" role="status" aria-live="polite">Tap Start Camera.</div>
 
   <video id="video" autoplay playsinline muted aria-hidden="true"></video>
-  <canvas id="canvas" width="600" height="600" aria-label="Live center-cropped camera preview"></canvas>
+  <div class="preview">
+    <canvas id="canvas" width="600" height="600" aria-label="Live center-cropped camera preview"></canvas>
+    <button id="zoomBtn" type="button" aria-label="Zoom 2x; switch to 1x" aria-pressed="true" disabled>2x</button>
+  </div>
 
   <div class="controls">
     <button id="startBtn" type="button">Start Camera</button>
-    <button id="saveBtn" type="button" aria-label="Capture PNG image" disabled>Capture PNG</button>
     <button id="stopBtn" type="button" disabled>Stop Camera</button>
   </div>
-  <p>Tap the red button, then tap Download PNG and confirm Download if prompted.</p>
+  <div class="controls capture-controls">
+    <button id="sequenceBtn" type="button" aria-label="Sequence mode off; turn on" aria-pressed="false">Seq Off</button>
+    <button id="saveBtn" type="button" aria-label="Capture PNG image" disabled>Capture PNG</button>
+  </div>
+  <p>Seq Off: capture a PNG, then tap Download PNG. Seq On: capture images, then tap Save to Files for one ZIP.</p>
   <div class="controls">
     <a id="downloadLink" hidden>Download PNG</a>
     <button id="shareBtn" type="button" hidden>Save to Files...</button>
   </div>
-  <p>If downloading does not work, tap Save to Files, then choose Save to Files in the share sheet.</p>
+  <p>In the share sheet, choose Save to Files. If sharing is unavailable, confirm Download or use the download link.</p>
+  <section id="sequencePanel" aria-label="Captured image sequence" hidden>
+    <p id="sequenceSummary" role="status" aria-live="polite">0 images queued.</p>
+    <ol id="imageList" aria-label="Queued PNG filenames"></ol>
+    <p>Save to Files packages all queued images into one ZIP, even with Seq Off.</p>
+    <p>Images stay in this tab's memory only. Save before closing or reloading. Sequence limit: 64 MiB.</p>
+    <button id="clearBtn" type="button" disabled>Clear list</button>
+  </section>
 
   <script>
     const video = document.getElementById('video');
@@ -108,6 +153,12 @@
     const stopBtn = document.getElementById('stopBtn');
     const downloadLink = document.getElementById('downloadLink');
     const shareBtn = document.getElementById('shareBtn');
+    const zoomBtn = document.getElementById('zoomBtn');
+    const sequenceBtn = document.getElementById('sequenceBtn');
+    const sequencePanel = document.getElementById('sequencePanel');
+    const sequenceSummary = document.getElementById('sequenceSummary');
+    const imageList = document.getElementById('imageList');
+    const clearBtn = document.getElementById('clearBtn');
 
     let stream = null;
     let animationId = null;
@@ -116,16 +167,167 @@
     let sharing = false;
     let capturedFile = null;
     let sequence = 0;
+    let zoom = 2;
+    let sequenceMode = false;
+    let queuedBytes = 0;
+    let sequencePackage = null;
+    const queuedImages = [];
 
     const OUTPUT_SIZE = 2000;
-    const DESIRED_ZOOM = 2;
+    // dover-gain-efficient: bounded in-memory sequences; use IndexedDB for longer or persistent sessions.
+    const MAX_SEQUENCE_BYTES = 64 * 1024 * 1024;
+    // ZIP's standard reflected CRC-32 table; calculate each image's checksum only once.
+    const CRC_TABLE = new Uint32Array(256);
+    for (let index = 0; index < CRC_TABLE.length; index++) {
+      let value = index;
+      for (let bit = 0; bit < 8; bit++) value = (value >>> 1) ^ ((value & 1) ? 0xedb88320 : 0);
+      CRC_TABLE[index] = value >>> 0;
+    }
 
     // Display progress without claiming that a browser download proves a file was saved.
     function setStatus(msg) {
       statusEl.textContent = msg;
     }
 
-    // Request a rear-camera stream and preserve the existing optional 2x hardware zoom.
+    // Keep capture, mode changes, clearing, and sharing locked during image preparation or sharing.
+    function updateControls() {
+      const busy = encoding || sharing;
+      const hasFrame = stream && video.readyState >= 2 && video.videoWidth && video.videoHeight;
+      saveBtn.disabled = zoomBtn.disabled = busy || !hasFrame;
+      sequenceBtn.disabled = busy;
+      clearBtn.disabled = busy || !queuedImages.length;
+      shareBtn.disabled = busy || (!capturedFile && !queuedImages.length);
+    }
+
+    // Reflect sequence mode and count without rebuilding the accumulated filename list.
+    function updateSequence() {
+      sequenceBtn.textContent = sequenceMode ? 'Seq On' : 'Seq Off';
+      sequenceBtn.setAttribute('aria-pressed', String(sequenceMode));
+      sequenceBtn.setAttribute('aria-label', `Sequence mode ${sequenceMode ? 'on; turn off' : 'off; turn on'}`);
+      sequencePanel.hidden = !sequenceMode && !queuedImages.length;
+      sequenceSummary.textContent = `${queuedImages.length} image${queuedImages.length === 1 ? '' : 's'} queued (${(queuedBytes / 1048576).toFixed(1)} MiB / 64 MiB).`;
+      updateControls();
+    }
+
+    // Turn collection on or off without deleting previously queued images.
+    function toggleSequence() {
+      if (encoding || sharing) return;
+      sequenceMode = !sequenceMode;
+      updateSequence();
+      setStatus(sequenceMode
+        ? 'Sequence on. The red button adds PNGs to the list; Save to Files exports one ZIP.'
+        : `Sequence off. ${queuedImages.length} queued image${queuedImages.length === 1 ? '' : 's'} retained; new captures are individual PNGs.`);
+    }
+
+    // Check the actual file type with the browser rather than assuming ZIP sharing is supported.
+    function canShareFile(file) {
+      try {
+        return Boolean(navigator.share && navigator.canShare?.({ files: [file] }));
+      } catch {
+        return false;
+      }
+    }
+
+    // Offer one prepared PNG or ZIP through a real link while allowing an earlier download to finish.
+    function offerDownload(file) {
+      const url = URL.createObjectURL(file);
+      if (downloadLink.hasAttribute('href')) setTimeout(URL.revokeObjectURL, 60000, downloadLink.href);
+      downloadLink.href = url;
+      downloadLink.download = file.name;
+      downloadLink.textContent = `Download ${file.name.endsWith('.zip') ? 'ZIP' : 'PNG'} (${file.name})`;
+      downloadLink.hidden = false;
+      shareBtn.hidden = !queuedImages.length && !canShareFile(file);
+    }
+
+    // Return ZIP-compatible CRC-32 for the exact encoded PNG bytes.
+    function crc32(bytes) {
+      let value = 0xffffffff;
+      for (const byte of bytes) value = CRC_TABLE[(value ^ byte) & 255] ^ (value >>> 8);
+      return (value ^ 0xffffffff) >>> 0;
+    }
+
+    // Build a flat ZIP32 archive from cached CRCs: little-endian local, central, and end records.
+    function makeZip(entries) {
+      // dover-gain-efficient: store PNGs without recompressing; Blob parts reuse files instead of reading the whole list again.
+      if (!entries.length || entries.length >= 65535) throw new Error('Invalid ZIP image count.');
+      const parts = [];
+      const directory = [];
+      let offset = 0;
+      let directorySize = 0;
+      for (const entry of entries) {
+        const file = entry.file;
+        const name = new TextEncoder().encode(file.name);
+        if (!/^photo-\d+\.png$/.test(file.name) || name.length >= 65535 || file.size >= 0xffffffff) {
+          throw new Error('An image exceeds the supported ZIP format.');
+        }
+        const stamp = new Date(file.lastModified);
+        const year = Math.min(2107, Math.max(1980, stamp.getFullYear()));
+        const date = ((year - 1980) << 9) | ((stamp.getMonth() + 1) << 5) | stamp.getDate();
+        const time = (stamp.getHours() << 11) | (stamp.getMinutes() << 5) | (stamp.getSeconds() >> 1);
+        const local = new Uint8Array(30);
+        const header = new DataView(local.buffer);
+        header.setUint32(0, 0x04034b50, true);
+        header.setUint16(4, 20, true);
+        header.setUint16(10, time, true);
+        header.setUint16(12, date, true);
+        header.setUint32(14, entry.crc, true);
+        header.setUint32(18, file.size, true);
+        header.setUint32(22, file.size, true);
+        header.setUint16(26, name.length, true);
+        const central = new Uint8Array(46);
+        const record = new DataView(central.buffer);
+        record.setUint32(0, 0x02014b50, true);
+        record.setUint16(4, 20, true);
+        central.set(local.subarray(4, 26), 6);
+        record.setUint16(28, name.length, true);
+        record.setUint32(42, offset, true);
+        parts.push(local, name, file);
+        directory.push(central, name);
+        offset += local.length + name.length + file.size;
+        directorySize += central.length + name.length;
+      }
+      if (offset + directorySize + 22 >= 0xffffffff) throw new Error('The sequence exceeds ZIP32 size limits.');
+      const end = new Uint8Array(22);
+      const trailer = new DataView(end.buffer);
+      trailer.setUint32(0, 0x06054b50, true);
+      trailer.setUint16(8, entries.length, true);
+      trailer.setUint16(10, entries.length, true);
+      trailer.setUint32(12, directorySize, true);
+      trailer.setUint32(16, offset, true);
+      return new File([...parts, ...directory, end], `sequence-${Date.now()}-${entries.length}.zip`, { type: 'application/zip' });
+    }
+
+    // Delete a sequence only after explicit confirmation, since sharing does not confirm a disk save.
+    function clearSequence() {
+      if (encoding || sharing || !queuedImages.length || !window.confirm('Clear all queued images? Save the ZIP first; this cannot be undone.')) return;
+      let individual = capturedFile;
+      for (const entry of queuedImages) {
+        if (entry.file === capturedFile) individual = null;
+      }
+      queuedImages.length = 0;
+      queuedBytes = 0;
+      sequencePackage = null;
+      capturedFile = individual;
+      imageList.replaceChildren();
+      if (downloadLink.hasAttribute('href')) {
+        URL.revokeObjectURL(downloadLink.href);
+        downloadLink.removeAttribute('href');
+      }
+      downloadLink.hidden = shareBtn.hidden = true;
+      // Clearing the list must not erase a separate PNG, including a capture that exceeded the queue limit.
+      if (individual) offerDownload(individual);
+      updateSequence();
+      setStatus(`Image list cleared.${individual ? ' The last individual PNG is still ready to download.' : ''}`);
+    }
+
+    // Request a leave-page warning where supported; the visible memory warning remains essential on iPhone.
+    function warnBeforeLeave(event) {
+      if (!queuedImages.length) return;
+      event.preventDefault();
+      event.returnValue = '';
+    }
+
+    // Request a rear-camera stream; the shared crop handles zoom without camera-specific capabilities.
     async function startCamera() {
       if (startBtn.disabled) return;
       startBtn.disabled = true;
@@ -156,37 +358,11 @@
         if (session !== cameraSession) return;
 
         const track = stream.getVideoTracks()[0];
-        const capabilities = track.getCapabilities ? track.getCapabilities() : {};
         const settings = track.getSettings ? track.getSettings() : {};
 
         setStatus(
-          `Camera started. Resolution: ${settings.width || '?'}x${settings.height || '?'}`
+          `Camera started. Resolution: ${settings.width || '?'}x${settings.height || '?'} | Zoom: ${zoom}x (digital)`
         );
-
-        if (capabilities.zoom) {
-          const zoom = Math.min(
-            Math.max(DESIRED_ZOOM, capabilities.zoom.min),
-            capabilities.zoom.max
-          );
-
-          try {
-            await track.applyConstraints({
-              advanced: [{ zoom }]
-            });
-            const updated = track.getSettings ? track.getSettings() : {};
-            setStatus(
-              `Camera started. Resolution: ${updated.width || settings.width || '?'}x${updated.height || settings.height || '?'} | Zoom: ${updated.zoom || zoom}`
-            );
-          } catch (zoomErr) {
-            setStatus(
-              `Camera started. Resolution: ${settings.width || '?'}x${settings.height || '?'} | Zoom not supported by this browser/device`
-            );
-          }
-        } else {
-          setStatus(
-            `Camera started. Resolution: ${settings.width || '?'}x${settings.height || '?'} | Zoom capability not available`
-          );
-        }
 
         if (session !== cameraSession) return;
         stopBtn.disabled = false;
@@ -199,16 +375,28 @@
       }
     }
 
-    // Reuse the original centered source crop for both the small preview and the 2000-pixel PNG.
+    // Apply identical centered digital magnification to the preview and the 2000-pixel PNG.
     function drawCrop(context, size) {
       if (video.readyState < 2 || !video.videoWidth || !video.videoHeight) return false;
       const vw = video.videoWidth;
       const vh = video.videoHeight;
-      const cropSize = Math.min(OUTPUT_SIZE, vw, vh);
+      // dover-gain-efficient: cropping needs no camera-zoom API; 2x halves source width and height.
+      const cropSize = Math.min(OUTPUT_SIZE, vw, vh) / zoom;
       const sx = Math.floor((vw - cropSize) / 2);
       const sy = Math.floor((vh - cropSize) / 2);
       context.drawImage(video, sx, sy, cropSize, cropSize, 0, 0, size, size);
       return true;
+    }
+
+    // Toggle magnification and refresh the preview; already-prepared PNGs remain unchanged.
+    function toggleZoom() {
+      if (!stream || zoomBtn.disabled || encoding || sharing) return;
+      zoom = zoom === 1 ? 2 : 1;
+      zoomBtn.textContent = `${zoom}x`;
+      zoomBtn.setAttribute('aria-pressed', String(zoom === 2));
+      zoomBtn.setAttribute('aria-label', `Zoom ${zoom}x; switch to ${zoom === 1 ? 2 : 1}x`);
+      drawCrop(ctx, canvas.width);
+      setStatus(`Zoom: ${zoom}x (digital). New captures use this view.`);
     }
 
     // Keep phone preview work small while retaining full-size PNG captures.
@@ -219,8 +407,8 @@
         if (!stream) return;
         if (time - previousFrame >= 1000 / 15) {
           previousFrame = time;
-          const hasFrame = drawCrop(ctx, canvas.width);
-          saveBtn.disabled = encoding || sharing || !hasFrame;
+          drawCrop(ctx, canvas.width);
+          updateControls();
         }
 
         animationId = requestAnimationFrame(render);
@@ -243,9 +431,9 @@
       }
 
       video.srcObject = null;
-      saveBtn.disabled = true;
       stopBtn.disabled = true;
       startBtn.disabled = false;
+      updateControls();
       setStatus('Camera stopped');
     }
 
@@ -271,13 +459,13 @@
       return `photo-${String(sequence).padStart(6, '0')}.png`;
     }
 
-    // Prepare a frozen PNG and visible save actions; never synthesize a download click.
+    // Prepare a frozen PNG; sequence mode caches its checksum and retains the original file in the list.
     async function saveImage() {
       if (!stream || encoding || sharing) return;
       encoding = true;
-      saveBtn.disabled = true;
-      shareBtn.disabled = true;
+      updateControls();
       const snapshot = document.createElement('canvas');
+      let file = null;
       try {
         snapshot.width = snapshot.height = OUTPUT_SIZE;
         if (!drawCrop(snapshot.getContext('2d', { alpha: false }), OUTPUT_SIZE)) {
@@ -298,46 +486,63 @@
           // Optional cross-tab locking must not block saving in restricted browser contexts.
           filename = nextFilename();
         }
-        const file = new File([blob], filename, { type: 'image/png' });
-        const url = URL.createObjectURL(blob);
-        if (downloadLink.hasAttribute('href')) {
-          // Give an earlier download time to finish; keep the current URL usable for retries.
-          setTimeout(URL.revokeObjectURL, 60000, downloadLink.href);
-        }
+        file = new File([blob], filename, { type: 'image/png' });
         capturedFile = file;
-        downloadLink.href = url;
-        downloadLink.download = filename;
-        downloadLink.textContent = `Download PNG (${filename})`;
-        downloadLink.hidden = false;
-        shareBtn.hidden = !(navigator.share && navigator.canShare?.({ files: [file] }));
-        setStatus(`PNG ready: ${filename}. Tap Download PNG${shareBtn.hidden ? '.' : ' or Save to Files.'}`);
+        if (sequenceMode) {
+          if (queuedBytes + file.size > MAX_SEQUENCE_BYTES || queuedImages.length >= 65534) {
+            throw new Error('Sequence limit reached. Save the ZIP and clear the list; this capture is available separately as a PNG.');
+          }
+          const crc = crc32(new Uint8Array(await file.arrayBuffer()));
+          const item = document.createElement('li');
+          item.textContent = filename;
+          queuedImages.push({ file, crc });
+          queuedBytes += file.size;
+          imageList.appendChild(item);
+          sequencePackage = null;
+          downloadLink.hidden = true;
+          shareBtn.hidden = false;
+          updateSequence();
+          setStatus(`${filename} added. ${queuedImages.length} image${queuedImages.length === 1 ? '' : 's'} queued. Tap Save to Files to export one ZIP.`);
+        } else {
+          offerDownload(file);
+          setStatus(queuedImages.length
+            ? `PNG ready: ${filename}. Download PNG saves this image; Save to Files exports the ${queuedImages.length} queued images.`
+            : `PNG ready: ${filename}. Tap Download PNG${shareBtn.hidden ? '.' : ' or Save to Files.'}`);
+        }
       } catch (err) {
         console.error(err);
-        setStatus(`Capture failed: ${err.message}`);
+        if (file) offerDownload(file);
+        setStatus(`Capture${file ? ' not queued; use Download PNG' : ' failed'}: ${err.message}`);
       } finally {
         snapshot.width = snapshot.height = 0;
         encoding = false;
-        shareBtn.disabled = false;
-        saveBtn.disabled = !stream || video.readyState < 2;
+        updateControls();
       }
     }
 
-    // Invoke native file sharing directly from a new tap, before any asynchronous work.
+    // Build the cached ZIP synchronously and share one file directly from the tap, before the first await.
     async function shareImage() {
-      if (!capturedFile || sharing || encoding) return;
+      if ((!capturedFile && !queuedImages.length) || sharing || encoding) return;
       sharing = true;
-      shareBtn.disabled = saveBtn.disabled = true;
+      updateControls();
       try {
-        await navigator.share({ files: [capturedFile] });
-        setStatus('Sharing finished. If you selected Save to Files, check the folder you chose.');
+        const file = queuedImages.length ? (sequencePackage ||= makeZip(queuedImages)) : capturedFile;
+        offerDownload(file);
+        if (!canShareFile(file)) {
+          // The archive is already prepared, so request a Blob download within this same user tap.
+          downloadLink.click();
+          setStatus('Download requested instead of sharing. Confirm Download if prompted; use the visible download link to retry.');
+          return;
+        }
+        await navigator.share({ files: [file] });
+        setStatus(`Sharing finished. Check the folder you chose.${queuedImages.length ? ' The image list is retained until you clear it.' : ''}`);
       } catch (err) {
         setStatus(err.name === 'AbortError'
-          ? 'Sharing canceled. Your PNG is still ready to download.'
-          : `Sharing failed: ${err.message}. Try the Download PNG link.`);
+          ? 'Sharing canceled. Your images are retained; the prepared file is still ready to download.'
+          : `Sharing failed: ${err.message}. Images are retained; try the download link.`);
       } finally {
         sharing = false;
-        shareBtn.disabled = false;
-        saveBtn.disabled = !stream || video.readyState < 2;
+        updateControls();
       }
     }
 
@@ -346,12 +551,62 @@
       setStatus('Download requested. Confirm Download if prompted, then check Files > On My iPhone > Downloads.');
     }
 
+    // After starting the camera, run await selfCheck() in the console to verify zoom crops and ZIP records.
+    async function selfCheck() {
+      const originalZoom = zoom;
+      const samples = [];
+      const recorder = {
+        // Record crop geometry without altering the preview or creating a downloaded image.
+        drawImage(...args) { samples.push(args); }
+      };
+      try {
+        for (const level of [1, 2]) {
+          zoom = level;
+          drawCrop(recorder, canvas.width);
+          drawCrop(recorder, OUTPUT_SIZE);
+        }
+        if (samples.length !== 4) throw new Error('Start the camera before running selfCheck().');
+        for (let index = 0; index < samples.length; index++) {
+          const side = Math.min(OUTPUT_SIZE, video.videoWidth, video.videoHeight) / (index < 2 ? 1 : 2);
+          const size = index % 2 === 0 ? canvas.width : OUTPUT_SIZE;
+          const expected = [
+            Math.floor((video.videoWidth - side) / 2), Math.floor((video.videoHeight - side) / 2),
+            side, side, 0, 0, size, size
+          ];
+          if (samples[index][0] !== video || JSON.stringify(samples[index].slice(1)) !== JSON.stringify(expected)) {
+            throw new Error('Preview and PNG zoom crops failed their self-check.');
+          }
+        }
+      } finally {
+        zoom = originalZoom;
+      }
+      // Standard CRC test bytes and an empty entry exercise packaging without adding anything to the image list.
+      const bytes = new TextEncoder().encode('123456789');
+      if (crc32(bytes) !== 0xcbf43926 || crc32(new Uint8Array()) !== 0) throw new Error('ZIP CRC-32 self-check failed.');
+      const entries = [
+        { file: new File([bytes], 'photo-000001.png'), crc: crc32(bytes) },
+        { file: new File([], 'photo-000002.png'), crc: 0 }
+      ];
+      const zip = new DataView(await makeZip(entries).arrayBuffer());
+      const end = zip.byteLength - 22;
+      if (zip.getUint32(0, true) !== 0x04034b50 || zip.getUint32(14, true) !== 0xcbf43926 ||
+          zip.getUint32(end, true) !== 0x06054b50 || zip.getUint16(end + 10, true) !== 2 ||
+          zip.getUint32(zip.getUint32(end + 16, true), true) !== 0x02014b50) {
+        throw new Error('ZIP record self-check failed.');
+      }
+      return 'PASS: 1x/2x preview and PNG crop geometry, CRC-32, and ZIP records.';
+    }
+
     startBtn.addEventListener('click', startCamera);
     stopBtn.addEventListener('click', stopCamera);
     saveBtn.addEventListener('click', saveImage);
     downloadLink.addEventListener('click', requestDownload);
     shareBtn.addEventListener('click', shareImage);
+    zoomBtn.addEventListener('click', toggleZoom);
+    sequenceBtn.addEventListener('click', toggleSequence);
+    clearBtn.addEventListener('click', clearSequence);
     window.addEventListener('pagehide', stopCamera);
+    window.addEventListener('beforeunload', warnBeforeLeave);
   </script>
 </body>
 </html>
