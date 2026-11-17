@@ -1,15 +1,21 @@
 <!DOCTYPE html>
+<!-- iPhone Safari center-crop camera: serve over HTTPS and save prepared PNGs with a direct user tap. -->
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Environment Camera Center Crop</title>
   <style>
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
     body {
       font-family: Arial, sans-serif;
-      margin: 20px;
+      margin: 0;
+      padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right))
+        max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
       background: #f5f5f5;
       color: #222;
+      text-align: center;
     }
 
     h1 {
@@ -21,13 +27,30 @@
       display: flex;
       gap: 10px;
       flex-wrap: wrap;
+      justify-content: center;
+      align-items: center;
     }
 
-    button {
-      padding: 10px 14px;
-      font-size: 14px;
+    button, a {
+      min-height: 44px;
+      padding: 12px 16px;
+      font-size: 16px;
       cursor: pointer;
+      touch-action: manipulation;
     }
+
+    button:disabled { opacity: .45; cursor: wait; }
+    button:focus-visible, a:focus-visible { outline: 3px solid #0065cc; outline-offset: 4px; }
+    #saveBtn {
+      width: 76px;
+      height: 76px;
+      border: 4px solid #fff;
+      border-radius: 50%;
+      background: #e11919;
+      font-size: 0;
+    }
+    #saveBtn:active { background: #b51010; }
+    #downloadLink { display: inline-block; color: #fff; background: #0065cc; border-radius: 8px; }
 
     .status {
       margin: 10px 0;
@@ -38,31 +61,42 @@
     canvas {
       border: 1px solid #999;
       background: #000;
-      width: 600px;
-      height: 600px;
-      max-width: 90vw;
-      max-height: 90vw;
+      display: block;
+      margin: 0 auto;
+      max-width: 100%;
+      width: min(100%, 600px, 55dvh);
+      height: auto;
       image-rendering: auto;
     }
 
     video {
-      display: none;
+      position: fixed;
+      width: 1px;
+      height: 1px;
+      opacity: 0;
+      pointer-events: none;
     }
   </style>
 </head>
 <body>
   <h1>Environment Camera Center Crop Viewer</h1>
 
+  <div class="status" id="status" role="status" aria-live="polite">Tap Start Camera.</div>
+
+  <video id="video" autoplay playsinline muted aria-hidden="true"></video>
+  <canvas id="canvas" width="600" height="600" aria-label="Live center-cropped camera preview"></canvas>
+
   <div class="controls">
-    <button id="startBtn">Start Camera</button>
-    <button id="saveBtn" disabled>Save Image</button>
-    <button id="stopBtn" disabled>Stop Camera</button>
+    <button id="startBtn" type="button">Start Camera</button>
+    <button id="saveBtn" type="button" aria-label="Capture PNG image" disabled>Capture PNG</button>
+    <button id="stopBtn" type="button" disabled>Stop Camera</button>
   </div>
-
-  <div class="status" id="status">Idle</div>
-
-  <video id="video" autoplay playsinline muted></video>
-  <canvas id="canvas" width="2000" height="2000"></canvas>
+  <p>Tap the red button, then tap Download PNG and confirm Download if prompted.</p>
+  <div class="controls">
+    <a id="downloadLink" hidden>Download PNG</a>
+    <button id="shareBtn" type="button" hidden>Save to Files...</button>
+  </div>
+  <p>If downloading does not work, tap Save to Files, then choose Save to Files in the share sheet.</p>
 
   <script>
     const video = document.getElementById('video');
@@ -72,33 +106,54 @@
     const startBtn = document.getElementById('startBtn');
     const saveBtn = document.getElementById('saveBtn');
     const stopBtn = document.getElementById('stopBtn');
+    const downloadLink = document.getElementById('downloadLink');
+    const shareBtn = document.getElementById('shareBtn');
 
     let stream = null;
     let animationId = null;
-    let imageFileHandle = null;
+    let cameraSession = 0;
+    let encoding = false;
+    let sharing = false;
+    let capturedFile = null;
+    let sequence = 0;
 
     const OUTPUT_SIZE = 2000;
     const DESIRED_ZOOM = 2;
 
+    // Display progress without claiming that a browser download proves a file was saved.
     function setStatus(msg) {
       statusEl.textContent = msg;
     }
 
+    // Request a rear-camera stream and preserve the existing optional 2x hardware zoom.
     async function startCamera() {
+      if (startBtn.disabled) return;
+      startBtn.disabled = true;
+      const session = ++cameraSession;
       try {
+        if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+          throw new Error('Open this page in Safari using HTTPS to access the camera.');
+        }
         setStatus('Requesting environment camera...');
 
-        stream = await navigator.mediaDevices.getUserMedia({
+        const requestedStream = await navigator.mediaDevices.getUserMedia({
           audio: false,
           video: {
-            facingMode: { ideal: 'environment' },
+            facingMode: { exact: 'environment' },
             width: { ideal: 99999 },
-            height: { ideal: 99999 }
+            height: { ideal: 99999 },
+            frameRate: { ideal: 15 }
           }
         });
 
+        if (session !== cameraSession) {
+          for (const track of requestedStream.getTracks()) track.stop();
+          return;
+        }
+        stream = requestedStream;
         video.srcObject = stream;
         await video.play();
+        if (session !== cameraSession) return;
 
         const track = stream.getVideoTracks()[0];
         const capabilities = track.getCapabilities ? track.getCapabilities() : {};
@@ -133,31 +188,39 @@
           );
         }
 
-        startRendering();
-        saveBtn.disabled = false;
+        if (session !== cameraSession) return;
         stopBtn.disabled = false;
-        startBtn.disabled = true;
+        startRendering();
       } catch (err) {
+        if (session !== cameraSession) return;
         console.error(err);
+        stopCamera();
         setStatus(`Failed to start camera: ${err.message}`);
       }
     }
 
+    // Reuse the original centered source crop for both the small preview and the 2000-pixel PNG.
+    function drawCrop(context, size) {
+      if (video.readyState < 2 || !video.videoWidth || !video.videoHeight) return false;
+      const vw = video.videoWidth;
+      const vh = video.videoHeight;
+      const cropSize = Math.min(OUTPUT_SIZE, vw, vh);
+      const sx = Math.floor((vw - cropSize) / 2);
+      const sy = Math.floor((vh - cropSize) / 2);
+      context.drawImage(video, sx, sy, cropSize, cropSize, 0, 0, size, size);
+      return true;
+    }
+
+    // Keep phone preview work small while retaining full-size PNG captures.
     function startRendering() {
-      function render() {
-        if (video.videoWidth > 0 && video.videoHeight > 0) {
-          const vw = video.videoWidth;
-          const vh = video.videoHeight;
-
-          const cropSize = Math.min(OUTPUT_SIZE, vw, vh);
-          const sx = Math.floor((vw - cropSize) / 2);
-          const sy = Math.floor((vh - cropSize) / 2);
-
-          ctx.drawImage(
-            video,
-            sx, sy, cropSize, cropSize,
-            0, 0, OUTPUT_SIZE, OUTPUT_SIZE
-          );
+      let previousFrame = -Infinity;
+      // Render at most 15 times per second and disable capture until a frame is available.
+      function render(time = 0) {
+        if (!stream) return;
+        if (time - previousFrame >= 1000 / 15) {
+          previousFrame = time;
+          const hasFrame = drawCrop(ctx, canvas.width);
+          saveBtn.disabled = encoding || sharing || !hasFrame;
         }
 
         animationId = requestAnimationFrame(render);
@@ -166,14 +229,16 @@
       render();
     }
 
+    // Stop rendering and release camera hardware, including a pending startup on page exit.
     function stopCamera() {
+      cameraSession++;
       if (animationId) {
         cancelAnimationFrame(animationId);
         animationId = null;
       }
 
       if (stream) {
-        stream.getTracks().forEach(track => track.stop());
+        for (const track of stream.getTracks()) track.stop();
         stream = null;
       }
 
@@ -184,44 +249,109 @@
       setStatus('Camera stopped');
     }
 
-    async function saveImage() {
+    // Reuse the existing page's counter format; blocked storage falls back to time-seeded numbering.
+    function nextFilename() {
+      // dover-gain-efficient: site data cannot inspect Downloads; clearing it resets persistent numbering.
+      const key = 'iphone-camera-number';
+      let previous;
       try {
-        if ('showSaveFilePicker' in window) {
-          const handle = await window.showSaveFilePicker({
-            suggestedName: `capture-${Date.now()}.png`,
-            types: [
-              {
-                description: 'PNG Image',
-                accept: { 'image/png': ['.png'] }
-              }
-            ]
-          });
+        previous = Number(localStorage.getItem(key) || '0');
+      } catch {
+        previous = Date.now();
+      }
+      if (!Number.isSafeInteger(previous) || previous < 0 || previous >= Number.MAX_SAFE_INTEGER) {
+        previous = Date.now();
+      }
+      sequence = Math.max(sequence, previous) + 1;
+      try {
+        localStorage.setItem(key, String(sequence));
+      } catch {
+        sequence = Math.max(sequence, Date.now());
+      }
+      return `photo-${String(sequence).padStart(6, '0')}.png`;
+    }
 
-          const blob = await new Promise(resolve => {
-            canvas.toBlob(resolve, 'image/png');
-          });
-
-          const writable = await handle.createWritable();
-          await writable.write(blob);
-          await writable.close();
-
-          setStatus('Image saved successfully');
-        } else {
-          const link = document.createElement('a');
-          link.download = `capture-${Date.now()}.png`;
-          link.href = canvas.toDataURL('image/png');
-          link.click();
-          setStatus('Image downloaded');
+    // Prepare a frozen PNG and visible save actions; never synthesize a download click.
+    async function saveImage() {
+      if (!stream || encoding || sharing) return;
+      encoding = true;
+      saveBtn.disabled = true;
+      shareBtn.disabled = true;
+      const snapshot = document.createElement('canvas');
+      try {
+        snapshot.width = snapshot.height = OUTPUT_SIZE;
+        if (!drawCrop(snapshot.getContext('2d', { alpha: false }), OUTPUT_SIZE)) {
+          throw new Error('No camera frame is available yet. Please retry.');
         }
+        setStatus('Preparing PNG...');
+        // Encode asynchronously without a large base64 copy or a moving preview canvas.
+        const blob = await new Promise(function (resolve) {
+          snapshot.toBlob(resolve, 'image/png');
+        });
+        if (!blob) throw new Error('PNG encoding failed. Please retry.');
+        let filename;
+        try {
+          filename = navigator.locks
+            ? await navigator.locks.request('iphone-camera-number', nextFilename)
+            : nextFilename();
+        } catch {
+          // Optional cross-tab locking must not block saving in restricted browser contexts.
+          filename = nextFilename();
+        }
+        const file = new File([blob], filename, { type: 'image/png' });
+        const url = URL.createObjectURL(blob);
+        if (downloadLink.hasAttribute('href')) {
+          // Give an earlier download time to finish; keep the current URL usable for retries.
+          setTimeout(URL.revokeObjectURL, 60000, downloadLink.href);
+        }
+        capturedFile = file;
+        downloadLink.href = url;
+        downloadLink.download = filename;
+        downloadLink.textContent = `Download PNG (${filename})`;
+        downloadLink.hidden = false;
+        shareBtn.hidden = !(navigator.share && navigator.canShare?.({ files: [file] }));
+        setStatus(`PNG ready: ${filename}. Tap Download PNG${shareBtn.hidden ? '.' : ' or Save to Files.'}`);
       } catch (err) {
         console.error(err);
-        setStatus(`Save cancelled or failed: ${err.message}`);
+        setStatus(`Capture failed: ${err.message}`);
+      } finally {
+        snapshot.width = snapshot.height = 0;
+        encoding = false;
+        shareBtn.disabled = false;
+        saveBtn.disabled = !stream || video.readyState < 2;
       }
+    }
+
+    // Invoke native file sharing directly from a new tap, before any asynchronous work.
+    async function shareImage() {
+      if (!capturedFile || sharing || encoding) return;
+      sharing = true;
+      shareBtn.disabled = saveBtn.disabled = true;
+      try {
+        await navigator.share({ files: [capturedFile] });
+        setStatus('Sharing finished. If you selected Save to Files, check the folder you chose.');
+      } catch (err) {
+        setStatus(err.name === 'AbortError'
+          ? 'Sharing canceled. Your PNG is still ready to download.'
+          : `Sharing failed: ${err.message}. Try the Download PNG link.`);
+      } finally {
+        sharing = false;
+        shareBtn.disabled = false;
+        saveBtn.disabled = !stream || video.readyState < 2;
+      }
+    }
+
+    // A direct anchor tap requests a download; Safari still controls confirmation and destination.
+    function requestDownload() {
+      setStatus('Download requested. Confirm Download if prompted, then check Files > On My iPhone > Downloads.');
     }
 
     startBtn.addEventListener('click', startCamera);
     stopBtn.addEventListener('click', stopCamera);
     saveBtn.addEventListener('click', saveImage);
+    downloadLink.addEventListener('click', requestDownload);
+    shareBtn.addEventListener('click', shareImage);
+    window.addEventListener('pagehide', stopCamera);
   </script>
 </body>
 </html>
